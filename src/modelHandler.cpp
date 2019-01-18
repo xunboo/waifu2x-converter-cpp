@@ -700,7 +700,7 @@ bool Model::filter(W2XConv *conv,
 
 bool Model::loadModelFromJSONObject(picojson::object &jsonObj) {
 
-	// nInputPlanes,nOutputPlanes,kernelSize have already set.
+	// nInputPlanes,nOutputPlanes,strideSize,kernelSize,padSize have already set.
 	int matProgress = 0;
 	picojson::array &wOutputPlane = jsonObj["weight"].get<picojson::array>();
 
@@ -796,14 +796,20 @@ modelUtility& modelUtility::getInstance(){
 
 Model::Model(FILE *binfp)
 {
-	uint32_t nInputPlanes, nOutputPlanes;
+	uint32_t nInputPlanes, nOutputPlanes, strideSize, kernelSize, padSize;
 
 	fread(&nInputPlanes, 4, 1, binfp);
 	fread(&nOutputPlanes, 4, 1, binfp);
 
+	fread(&strideSize, 4, 1, binfp);
+	fread(&kernelSize, 4, 1, binfp);
+	fread(&padSize, 4, 1, binfp);
+
 	this->nInputPlanes = nInputPlanes;
 	this->nOutputPlanes = nOutputPlanes;
-	this->kernelSize = 3;
+	this->strideSize = strideSize;
+	this->kernelSize = kernelSize;
+	this->padSize = padSize;
 	this->weights.clear();
 	this->biases.clear();
 
@@ -836,7 +842,9 @@ Model::Model(int nInputPlane,
 {
 	this->nInputPlanes = nInputPlane;
 	this->nOutputPlanes = nOutputPlane;
+	this->strideSize = 1;
 	this->kernelSize = 3;
+	this->padSize = 0;
 	this->weights.clear();
 	this->biases.clear();
 
@@ -926,6 +934,10 @@ bool modelUtility::generateModelFromJSON(const std::string &fileName,
 
 				fwrite(&nInputPlanes, 4, 1, binfp);
 				fwrite(&nOutputPlanes, 4, 1, binfp);
+
+				fwrite(&strideSize, 4, 1, binfp);
+				fwrite(&kernelSize, 4, 1, binfp);
+				fwrite(&padSize, 4, 1, binfp);
 
 				std::vector<W2Mat> &weights = m->getWeigts();
 
