@@ -1439,7 +1439,7 @@ w2xconv_convert_mat(struct W2XConv *conv,
 	}
 	image_src.release();
 
-	if (denoise_level != -1) {
+	if (denoise_level != -1 && (conv->upconv == false || scale == 1.0)) {
 		apply_denoise(conv, image, denoise_level, blockSize, fmt);
 	}
 
