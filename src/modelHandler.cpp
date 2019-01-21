@@ -27,6 +27,19 @@ int Model::getNOutputPlanes() {
 	return nOutputPlanes;
 }
 
+int Model::getStrideSize() {
+	return strideSize;
+}
+
+int Model::getKernelSize() {
+	return kernelSize;
+}
+
+int Model::getPadSize() {
+	return padSize;
+}
+
+
 bool
 Model::filter_CV(ComputeEnv *env,
 		 Buffer *packed_input_buf,
@@ -216,7 +229,7 @@ bool Model::filter_AVX_OpenCL(W2XConv *conv,
 		vec_width = VEC_WIDTH;
 	}
 
-	float *weight_flat = (float*)w2xc_aligned_malloc(sizeof(float)*nInputPlanes*weight_step*3*3, 64);
+	float *weight_flat = (float*)w2xc_aligned_malloc(sizeof(float)*nInputPlanes*weight_step*kernelSize*kernelSize, 64);
 	float *fbiases_flat = (float*)w2xc_aligned_malloc(sizeof(float) * biases.size(), 64);
 
 	for (int i=0; i<(int)biases.size(); i++) {
@@ -817,8 +830,8 @@ Model::Model(FILE *binfp)
 	for (uint32_t oi=0; oi<nOutputPlanes; oi++) {
 		for (uint32_t ii=0; ii<nInputPlanes; ii++) {
 			W2Mat writeMatrix(kernelSize, kernelSize, CV_32FC1);
-			for (int yi=0; yi<3; yi++) {
-				for (int xi=0; xi<3; xi++) {
+			for (uint32_t yi=0; yi<kernelSize; yi++) {
+				for (uint32_t xi=0; xi<kernelSize; xi++) {
 					double v;
 					fread(&v, 8, 1, binfp);
 					writeMatrix.at<float>(yi, xi) = (float) v;
@@ -853,8 +866,8 @@ Model::Model(int nInputPlane,
 	for (uint32_t oi=0; oi<(uint32_t)nOutputPlanes; oi++) {
 		for (uint32_t ii=0; ii<(uint32_t)nInputPlanes; ii++) {
 			W2Mat writeMatrix(kernelSize, kernelSize, CV_32FC1);
-			for (int yi=0; yi<3; yi++) {
-				for (int xi=0; xi<3; xi++) {
+			for (int yi=0; yi<kernelSize; yi++) {
+				for (int xi=0; xi<kernelSize; xi++) {
 					double v = coef_list[cur++];
 					writeMatrix.at<float>(yi, xi) = (float) v;
 				}
@@ -931,6 +944,9 @@ bool modelUtility::generateModelFromJSON(const std::string &fileName,
 			for (auto&& m : models) {
 				uint32_t nInputPlanes = m->getNInputPlanes();
 				uint32_t nOutputPlanes = m->getNOutputPlanes();
+				uint32_t strideSize = m->getStrideSize();
+				uint32_t kernelSize = m->getKernelSize();
+				uint32_t padSize = m->getPadSize();
 
 				fwrite(&nInputPlanes, 4, 1, binfp);
 				fwrite(&nOutputPlanes, 4, 1, binfp);
@@ -982,9 +998,10 @@ void
 modelUtility::generateModelFromMEM(int layer_depth,
 				   int num_input_plane,
 				   const int *num_map, // num_map[layer_depth]
-				   const float *coef_list, // coef_list[layer_depth][num_map][3x3]
+				   const float *coef_list, // coef_list[layer_depth][num_map][kernelSizexkernelSize]
 				   const float *bias, // bias[layer_depth][num_map]
-				   std::vector<std::unique_ptr<Model> > &models
+				   std::vector<std::unique_ptr<Model> > &models,
+				   int kernelSize
 	)
 {
 	int cur = 0;
@@ -1000,7 +1017,7 @@ modelUtility::generateModelFromMEM(int layer_depth,
 	for (int li=1; li<layer_depth; li++) {
 		models[li] = std::unique_ptr<Model>(new Model(num_map[li-1],
 							      num_map[li],
-							      &coef_list[cur * 3 * 3],
+							      &coef_list[cur * kernelSize * kernelSize],
 							      &bias[cur]));
 
 		cur += num_map[li];

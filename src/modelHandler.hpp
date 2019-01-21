@@ -112,6 +112,9 @@ public:
 	// getter function
 	int getNInputPlanes();
 	int getNOutputPlanes();
+	int getStrideSize();
+	int getKernelSize();
+	int getPadSize();
 
 	std::vector<W2Mat> &getWeigts() {
 		return weights;
@@ -147,9 +150,10 @@ public:
 	static void generateModelFromMEM(int layer_depth,
 					 int num_input_plane,
 					 const int *num_map, // num_map[layer_depth]
-					 const float *coef_list, // coef_list[layer_depth][num_map][3x3]
+					 const float *coef_list, // coef_list[layer_depth][num_map][kernelSizexkernelSize]
 					 const float *bias, // bias[layer_depth][num_map]
-					 std::vector<std::unique_ptr<Model> > &models
+					 std::vector<std::unique_ptr<Model> > &models,
+					 int kernelSize
 		);
 
 	static modelUtility& getInstance();

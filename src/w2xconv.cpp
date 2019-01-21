@@ -620,7 +620,8 @@ w2xconv_set_model_3x3(struct W2XConv *conv,
 						 num_map,
 						 coef_list,
 						 bias,
-						 *models);
+						 *models,
+						 3);
 }
 
 void
