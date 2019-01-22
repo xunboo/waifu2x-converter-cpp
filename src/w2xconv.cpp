@@ -48,6 +48,10 @@ struct W2XConvImpl {
 	std::vector<std::unique_ptr<w2xc::Model> > noise2_models;
 	std::vector<std::unique_ptr<w2xc::Model> > noise3_models;
 	std::vector<std::unique_ptr<w2xc::Model> > scale2_models;
+	std::vector<std::unique_ptr<w2xc::Model> > noise0_scale2_models;
+	std::vector<std::unique_ptr<w2xc::Model> > noise1_scale2_models;
+	std::vector<std::unique_ptr<w2xc::Model> > noise2_scale2_models;
+	std::vector<std::unique_ptr<w2xc::Model> > noise3_scale2_models;
 };
 
 static std::vector<struct W2XConvProcessor> processor_list;
@@ -405,6 +409,7 @@ w2xconv_init_with_processor(int processor_idx,
 
 	c->impl = impl;
 	c->enable_log = enable_log;
+	c->upconv = false;
 	c->target_processor = proc;
 	c->last_error.code = W2XCONV_NOERROR;
 	c->flops.flop = 0;
@@ -538,6 +543,7 @@ int
 w2xconv_load_models(W2XConv *conv, const char *model_dir)
 {
 	struct W2XConvImpl *impl = conv->impl;
+	bool upconv=true;
 
 	std::string modelFileName(model_dir);
 
@@ -546,6 +552,10 @@ w2xconv_load_models(W2XConv *conv, const char *model_dir)
 	impl->noise2_models.clear();
 	impl->noise3_models.clear();
 	impl->scale2_models.clear();
+	impl->noise0_scale2_models.clear();
+	impl->noise1_scale2_models.clear();
+	impl->noise2_scale2_models.clear();
+	impl->noise3_scale2_models.clear();
 
 	if (!w2xc::modelUtility::generateModelFromJSON(modelFileName + "/noise0_model.json", impl->noise0_models)) {
 		setPathError(conv,
@@ -579,6 +589,20 @@ w2xconv_load_models(W2XConv *conv, const char *model_dir)
 		return -1;
 
 	}
+	if (!w2xc::modelUtility::generateModelFromJSON(modelFileName + "/noise0_scale2.0x_model.json", impl->noise0_scale2_models)) {
+		upconv=false;
+	}
+	if (!w2xc::modelUtility::generateModelFromJSON(modelFileName + "/noise1_scale2.0x_model.json", impl->noise1_scale2_models)) {
+		upconv=false;
+	}
+	if (!w2xc::modelUtility::generateModelFromJSON(modelFileName + "/noise2_scale2.0x_model.json", impl->noise2_scale2_models)) {
+		upconv=false;
+	}
+	if (!w2xc::modelUtility::generateModelFromJSON(modelFileName + "/noise3_scale2.0x_model.json", impl->noise3_scale2_models)) {
+		upconv=false;
+	}
+	
+	conv->upconv = upconv;
 
 	return 0;
 }
@@ -620,7 +644,8 @@ w2xconv_set_model_3x3(struct W2XConv *conv,
 						 num_map,
 						 coef_list,
 						 bias,
-						 *models);
+						 *models,
+						 3);
 }
 
 void
@@ -668,25 +693,27 @@ apply_denoise(struct W2XConv *conv,
 	W2Mat output_2;
 	W2Mat input_2(extract_view_from_cvmat(*input));
 
-	if (denoise_level == 0) {
+	switch (denoise_level) {
+	case 0:
 		w2xc::convertWithModels(conv, env, input_2, output_2,
 					impl->noise0_models,
 					&conv->flops, blockSize, fmt, conv->enable_log);
-	}
-	else if (denoise_level == 1) {
+		break;
+	case 1:
 		w2xc::convertWithModels(conv, env, input_2, output_2,
 					impl->noise1_models,
 					&conv->flops, blockSize, fmt, conv->enable_log);
-	}
-	else if (denoise_level == 2) {
+		break;
+	case 2:
 		w2xc::convertWithModels(conv, env, input_2, output_2,
 					impl->noise2_models,
 					&conv->flops, blockSize, fmt, conv->enable_log);
-	}
-	else if (denoise_level == 3) {
+		break;
+	case 3:
 		w2xc::convertWithModels(conv, env, input_2, output_2,
 					impl->noise3_models,
 					&conv->flops, blockSize, fmt, conv->enable_log);
+		break;
 	}
 
 	*output = copy_to_cvmat(output_2);
@@ -700,6 +727,7 @@ static void
 apply_scale(struct W2XConv *conv,
 	    cv::Mat &image,
 	    int iterTimesTwiceScaling,
+		int denoise_level,
 	    int blockSize,
 	    enum w2xc::image_format fmt)
 {
@@ -747,14 +775,59 @@ apply_scale(struct W2XConv *conv,
 
 		W2Mat output_2;
 		W2Mat input_2(extract_view_from_cvmat(*input));
+		bool result=false;
+		
+		if(denoise_level == -1 || conv->upconv == false){
+			result=w2xc::convertWithModels(conv,
+							env,
+							input_2,
+							output_2,
+							impl->scale2_models,
+							&conv->flops, blockSize, fmt,
+							conv->enable_log);
+		}
+		else{
+			switch(denoise_level){
+			case 0:
+				result=w2xc::convertWithModels(conv,
+								env,
+								input_2,
+								output_2,
+								impl->noise0_scale2_models,
+								&conv->flops, blockSize, fmt,
+								conv->enable_log);
+				break;
+			case 1:
+				result=w2xc::convertWithModels(conv,
+								env,
+								input_2,
+								output_2,
+								impl->noise1_scale2_models,
+								&conv->flops, blockSize, fmt,
+								conv->enable_log);
+				break;
+			case 2:
+				result=w2xc::convertWithModels(conv,
+								env,
+								input_2,
+								output_2,
+								impl->noise2_scale2_models,
+								&conv->flops, blockSize, fmt,
+								conv->enable_log);
+				break;
+			case 3:
+				result=w2xc::convertWithModels(conv,
+								env,
+								input_2,
+								output_2,
+								impl->noise3_scale2_models,
+								&conv->flops, blockSize, fmt,
+								conv->enable_log);
+				break;
+			}
+		}
 
-		if(!w2xc::convertWithModels(conv,
-					    env,
-					    input_2,
-					    output_2,
-					    impl->scale2_models,
-					    &conv->flops, blockSize, fmt,
-					    conv->enable_log))
+		if(!result)
 		{
 			std::cerr << "w2xc::convertWithModels : something error has occured.\n"
 				"stop." << std::endl;
@@ -1366,7 +1439,7 @@ w2xconv_convert_mat(struct W2XConv *conv,
 	}
 	image_src.release();
 
-	if (denoise_level != -1) {
+	if (denoise_level != -1 && (conv->upconv == false || scale == 1.0)) {
 		apply_denoise(conv, image, denoise_level, blockSize, fmt);
 	}
 
@@ -1380,7 +1453,7 @@ w2xconv_convert_mat(struct W2XConv *conv,
 			shrinkRatio = scale / std::pow(2.0, static_cast<double>(iterTimesTwiceScaling));
 		}
 
-		apply_scale(conv, image, iterTimesTwiceScaling, blockSize, fmt);
+		apply_scale(conv, image, iterTimesTwiceScaling, denoise_level, blockSize, fmt);
 
 		if (shrinkRatio != 0.0) {
 			cv::Size lastImageSize = image.size();
@@ -1662,7 +1735,7 @@ convert_mat(struct W2XConv *conv,
 			shrinkRatio = scale / std::pow(2.0, static_cast<double>(iterTimesTwiceScaling));
 		}
 
-		apply_scale(conv, image, iterTimesTwiceScaling, blockSize, fmt);
+		apply_scale(conv, image, iterTimesTwiceScaling, denoise_level, blockSize, fmt);
 
 		if (shrinkRatio != 0.0) {
 			cv::Size lastImageSize = image.size();
