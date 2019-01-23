@@ -773,11 +773,13 @@ bool Model::filterWorker(std::vector<W2Mat> &inputPlanes_w2,
 		cv::Mat outputPlane = cv::Mat::zeros(ipSize, CV_32FC1);
 		cv::Mat &uIntermediatePlane = outputPlane; // all zero matrix
 
-		for (int ipIndex = 0; ipIndex < nInputPlanes; ipIndex++) {
+		for (int ipIndex = 0; ipIndex < nInputPlanes; ipIndex+=strideSize) {
 			cv::Mat &uInputPlane = inputPlanes[ipIndex];
 			cv::Mat &weightMatrix = weightMatrices[wMatIndex + ipIndex];
 			cv::Mat filterOutput = cv::Mat::zeros(ipSize, CV_32FC1);
-
+			
+			if(padSize > 0)
+				cv::copyMakeBorder(uInputPlane, uInputPlane, padSize, padSize, padSize, padSize, cv::BORDER_REPLICATE);
 			cv::filter2D(uInputPlane, filterOutput, -1, weightMatrix,
 				     cv::Point(-1, -1), 0.0, cv::BORDER_REPLICATE);
 
