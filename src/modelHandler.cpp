@@ -49,7 +49,9 @@ Model::filter_CV(ComputeEnv *env,
 	size_t in_size = sizeof(float) * size.width * size.height * nInputPlanes;
 	const float *packed_input = (float*)packed_input_buf->get_read_ptr_host(env, in_size);
 	float *packed_output = (float*)packed_output_buf->get_write_ptr_host(env);
-#if 0 // HAVE_OPENCV
+	
+	
+#if HAVE_OPENCV // HAVE_OPENCV
 
 	std::vector<cv::Mat> outputPlanes;
 	std::vector<cv::Mat> inputPlanes;
@@ -673,6 +675,10 @@ bool Model::filter(W2XConv *conv,
 		/* i3 o32 filter */
 	} else if (nOutputPlanes == 3 && nInputPlanes == 128) {
 		/* i128 o3 filter */
+	} else if (nInputPlanes == 256) {
+		cl_available = false;
+		cuda_available = false;
+		avx_available = false;
 	} else {
 		if (nInputPlanes & 1) {
 			cl_available = false;
@@ -693,7 +699,7 @@ bool Model::filter(W2XConv *conv,
 		}
 	}
 
-	//printf("%d %d %d\n",
+	//printf("[%d->%d] CUDA:%d CL:%d AVX:%d\n", nInputPlanes, nOutputPlanes,
 	//       (int)cuda_available,
 	//       (int)cl_available,
 	//       (int)avx_available);
@@ -760,6 +766,10 @@ bool Model::filterWorker(std::vector<W2Mat> &inputPlanes_w2,
 	std::vector<cv::Mat> inputPlanes = extract_viewlist_to_cvmat(inputPlanes_w2);
 	std::vector<cv::Mat> weightMatrices = extract_viewlist_to_cvmat(weightMatrices_w2);
 	std::vector<cv::Mat> outputPlanes = extract_viewlist_to_cvmat(outputPlanes_w2);
+	
+	if(padSize > 0)
+		for (cv::Mat ip : inputPlanes)
+				cv::copyMakeBorder(ip, ip, padSize, padSize, padSize, padSize, cv::BORDER_REPLICATE);	
 			 
 	cv::Size ipSize = inputPlanes[0].size();
 	// filter processing
@@ -778,10 +788,8 @@ bool Model::filterWorker(std::vector<W2Mat> &inputPlanes_w2,
 			cv::Mat &weightMatrix = weightMatrices[wMatIndex + ipIndex];
 			cv::Mat filterOutput = cv::Mat::zeros(ipSize, CV_32FC1);
 			
-			if(padSize > 0)
-				cv::copyMakeBorder(uInputPlane, uInputPlane, padSize, padSize, padSize, padSize, cv::BORDER_REPLICATE);
 			cv::filter2D(uInputPlane, filterOutput, -1, weightMatrix,
-				     cv::Point(-1, -1), 0.0, cv::BORDER_REPLICATE);
+					cv::Point(-1, -1), 0.0, cv::BORDER_REPLICATE);
 
 			cv::add(uIntermediatePlane, filterOutput, uIntermediatePlane);
 		}
