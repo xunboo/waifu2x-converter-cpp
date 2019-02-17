@@ -41,13 +41,7 @@ private:
 	// class inside operation function
 	bool loadModelFromJSONObject(picojson::object& jsonObj);
 
-	// thread worker function
-	bool filterWorker(std::vector<W2Mat> &inputPlanes,
-			  std::vector<W2Mat> &weightMatrices,
-			  std::vector<W2Mat> &outputPlanes, unsigned int beginningIndex,
-			  unsigned int nWorks);
-
-	bool filter_CV(ComputeEnv *env,
+	bool filter_CPU(ComputeEnv *env,
 		       Buffer *packed_input,
 		       Buffer *packed_output,
 		       const W2Size &size);

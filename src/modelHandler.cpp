@@ -41,7 +41,7 @@ int Model::getPadSize() {
 
 
 bool
-Model::filter_CV(ComputeEnv *env,
+Model::filter_CPU(ComputeEnv *env,
 		 Buffer *packed_input_buf,
 		 Buffer *packed_output_buf,
 		 const W2Size &size)
@@ -50,61 +50,6 @@ Model::filter_CV(ComputeEnv *env,
 	const float *packed_input = (float*)packed_input_buf->get_read_ptr_host(env, in_size);
 	float *packed_output = (float*)packed_output_buf->get_write_ptr_host(env);
 	
-	
-#if HAVE_OPENCV // HAVE_OPENCV
-
-	std::vector<cv::Mat> outputPlanes;
-	std::vector<cv::Mat> inputPlanes;
-
-	for (int i = 0; i < nInputPlanes; i++) {
-		inputPlanes.push_back(cv::Mat::zeros(cvSize_from_w2(size), CV_32FC1));
-	}
-	std::vector<W2Mat> inputPlanes_2(extract_viewlist_from_cvmat(inputPlanes));
-	unpack_mat(inputPlanes_2, packed_input, size.width, size.height, nInputPlanes);
-
-	outputPlanes.clear();
-	for (int i = 0; i < nOutputPlanes; i++) {
-		outputPlanes.push_back(cv::Mat::zeros(cvSize_from_w2(size), CV_32FC1));
-	}
-
-	int nJob = modelUtility::getInstance().getNumberOfJobs();
-
-	// filter job issuing
-	std::vector<std::thread> workerThreads;
-	int worksPerThread = nOutputPlanes / nJob;
-
-	std::vector<W2Mat> inputPlanes_w2 = extract_viewlist_from_cvmat(inputPlanes);
-	std::vector<W2Mat> outputPlanes_w2 = extract_viewlist_from_cvmat(outputPlanes);
-
-	for (int idx = 0; idx < nJob; idx++) {
-		if (!(idx == (nJob - 1) && worksPerThread * nJob != nOutputPlanes)) {
-			workerThreads.push_back(
-					std::thread(&Model::filterWorker, this,
-						    std::ref(inputPlanes_w2), std::ref(weights),
-						    std::ref(outputPlanes_w2),
-						    static_cast<unsigned int>(worksPerThread * idx),
-						    static_cast<unsigned int>(worksPerThread)));
-		} else {
-			// worksPerThread * nJob != nOutputPlanes
-			workerThreads.push_back(
-					std::thread(&Model::filterWorker, this,
-						    std::ref(inputPlanes_w2), std::ref(weights),
-						    std::ref(outputPlanes_w2),
-						    static_cast<unsigned int>(worksPerThread * idx),
-						    static_cast<unsigned int>(nOutputPlanes
-									      - worksPerThread * idx)));
-		}
-	}
-	// wait for finishing jobs
-	for (auto& th : workerThreads) {
-		th.join();
-	}
-
-	std::vector<W2Mat> outputPlanes_2(extract_viewlist_from_cvmat(outputPlanes));
-	pack_mat(packed_output, outputPlanes_2, size.width, size.height, nOutputPlanes);
-
-	return true;
-#else
 	std::atomic<int> yi_shared(0);
 
 	auto thread_func = [&](){
@@ -203,8 +148,6 @@ Model::filter_CV(ComputeEnv *env,
 	for (auto&th : workerThreads) {
 		th.join();
 	}
-
-#endif
 	return true;
 }
 
@@ -502,7 +445,7 @@ bool Model::filter_AVX_OpenCL(W2XConv *conv,
 		Buffer *packed_output_cv_buf = new Buffer(env, sizeof(float) * size.width * size.height * nOutputPlanes);
 
 		double t0 = getsec();
-		filter_CV(env, packed_input_buf, packed_output_cv_buf, size);
+		filter_CPU(env, packed_input_buf, packed_output_cv_buf, size);
 		//filter_FMA_impl(packed_input, packed_output_cv,
 		//		nInputPlanes, nOutputPlanes, fbiases_flat, weight_flat, size, nJob);
 		double t1 = getsec();
@@ -551,7 +494,7 @@ bool Model::filter_AVX_OpenCL(W2XConv *conv,
 #endif
 
 			default:
-				filter_CV(env, packed_input_buf, packed_output_buf, size);
+				filter_CPU(env, packed_input_buf, packed_output_buf, size);
 				break;
 			}
 		}
@@ -637,7 +580,7 @@ bool Model::filter_AVX_OpenCL(W2XConv *conv,
 				break;
 #endif
 			default:
-				filter_CV(env, packed_input_buf, packed_output_buf, size);
+				filter_CPU(env, packed_input_buf, packed_output_buf, size);
 				break;
 			}
 		}
@@ -711,8 +654,8 @@ bool Model::filter(W2XConv *conv,
 	{
 		ret = filter_AVX_OpenCL(conv, env, packed_input_buf, packed_output_buf, size);
 	} else {
-		ret = filter_CV(env, packed_input_buf, packed_output_buf, size);
 	}
+		ret = filter_CPU(env, packed_input_buf, packed_output_buf, size);
 
 	return ret;
 }
@@ -756,57 +699,6 @@ bool Model::loadModelFromJSONObject(picojson::object &jsonObj) {
 
 	return true;
 }
-
-#ifdef HAVE_OPENCV
-bool Model::filterWorker(std::vector<W2Mat> &inputPlanes_w2,
-			 std::vector<W2Mat> &weightMatrices_w2,
-			 std::vector<W2Mat> &outputPlanes_w2, unsigned int beginningIndex,
-			 unsigned int nWorks) {
-
-	std::vector<cv::Mat> inputPlanes = extract_viewlist_to_cvmat(inputPlanes_w2);
-	std::vector<cv::Mat> weightMatrices = extract_viewlist_to_cvmat(weightMatrices_w2);
-	std::vector<cv::Mat> outputPlanes = extract_viewlist_to_cvmat(outputPlanes_w2);
-	
-	if(padSize > 0)
-		for (cv::Mat ip : inputPlanes)
-				cv::copyMakeBorder(ip, ip, padSize, padSize, padSize, padSize, cv::BORDER_REPLICATE);	
-			 
-	cv::Size ipSize = inputPlanes[0].size();
-	// filter processing
-	// input : inputPlanes
-	// kernel : weightMatrices
-
-	for (int opIndex = beginningIndex;
-	     opIndex < (int)(beginningIndex + nWorks);
-	     opIndex++) {
-		int wMatIndex = nInputPlanes * opIndex;
-		cv::Mat outputPlane = cv::Mat::zeros(ipSize, CV_32FC1);
-		cv::Mat &uIntermediatePlane = outputPlane; // all zero matrix
-
-		for (int ipIndex = 0; ipIndex < nInputPlanes; ipIndex+=strideSize) {
-			cv::Mat &uInputPlane = inputPlanes[ipIndex];
-			cv::Mat &weightMatrix = weightMatrices[wMatIndex + ipIndex];
-			cv::Mat filterOutput = cv::Mat::zeros(ipSize, CV_32FC1);
-			
-			cv::filter2D(uInputPlane, filterOutput, -1, weightMatrix,
-					cv::Point(-1, -1), 0.0, cv::BORDER_REPLICATE);
-
-			cv::add(uIntermediatePlane, filterOutput, uIntermediatePlane);
-		}
-
-		cv::add(uIntermediatePlane, biases[opIndex], uIntermediatePlane);
-		cv::Mat moreThanZero = cv::Mat(ipSize,CV_32FC1,0.0);
-		cv::Mat lessThanZero = cv::Mat(ipSize,CV_32FC1,0.0);
-		(cv::max)(uIntermediatePlane, 0.0, moreThanZero);
-		(cv::min)(uIntermediatePlane, 0.0, lessThanZero);
-		cv::scaleAdd(lessThanZero, 0.1, moreThanZero, uIntermediatePlane);
-		uIntermediatePlane.copyTo(outputPlanes[opIndex]);
-
-	} // for index
-
-	return true;
-}
-#endif
 
 modelUtility * modelUtility::instance = nullptr;
 
