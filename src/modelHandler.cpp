@@ -68,42 +68,61 @@ Model::filter_CPU(ComputeEnv *env,
 			int yi0 = yi-1;
 			int yi1 = yi;
 			int yi2 = yi+1;
+			int yi3 = yi+2;
 
 			if (yi == 0) {
 				yi0 = 0;
 			}
-			if (yi == h-1) {
+			if (yi == h-2) {
+				yi3 = yi1;
+			} 
+			else if (yi == h-1) {
 				yi2 = yi1;
+				yi3 = yi1;
 			}
 
 			const float *in_line0 = packed_input + w * nInputPlanes * yi0;
 			const float *in_line1 = packed_input + w * nInputPlanes * yi1;
 			const float *in_line2 = packed_input + w * nInputPlanes * yi2;
+			const float *in_line3 = packed_input + w * nInputPlanes * yi3;
 
 			for (int xi=0; xi<w; xi++) {
 				int x0 = xi-1;
 				int x1 = xi;
 				int x2 = xi+1;
+				int x3 = xi+2;
 
 				if (xi == 0) {
 					x0 = 0;
 				}
 
-				if (xi == w-1) {
+				if (xi == w-2) {
+					x3 = x1;
+				}
+				else if (xi == w-1) {
 					x2 = x1;
+					x3 = x1;
 				}
 
 				const float *in00 = in_line0 + x0 * nInputPlanes;
 				const float *in01 = in_line0 + x1 * nInputPlanes;
 				const float *in02 = in_line0 + x2 * nInputPlanes;
+				const float *in03 = in_line0 + x3 * nInputPlanes;
 
 				const float *in10 = in_line1 + x0 * nInputPlanes;
 				const float *in11 = in_line1 + x1 * nInputPlanes;
 				const float *in12 = in_line1 + x2 * nInputPlanes;
+				const float *in13 = in_line1 + x3 * nInputPlanes;
 
 				const float *in20 = in_line2 + x0 * nInputPlanes;
 				const float *in21 = in_line2 + x1 * nInputPlanes;
 				const float *in22 = in_line2 + x2 * nInputPlanes;
+				const float *in23 = in_line2 + x3 * nInputPlanes;
+
+				const float *in30 = in_line3 + x0 * nInputPlanes;
+				const float *in31 = in_line3 + x1 * nInputPlanes;
+				const float *in32 = in_line3 + x2 * nInputPlanes;
+				const float *in33 = in_line3 + x3 * nInputPlanes;
 
 				for (int oi=0; oi<nOutputPlanes; oi++) {
 					float sum = 0;
@@ -111,18 +130,41 @@ Model::filter_CPU(ComputeEnv *env,
 					for (int ii=0; ii<nInputPlanes; ii++) {
 						int wMatIndex = nInputPlanes * oi + ii;
 						const float *w = weights[wMatIndex].ptr<float>(0);
+						
+						if(kernelSize == 3){
+							sum += in00[ii] * w[0];
+							sum += in01[ii] * w[1];
+							sum += in02[ii] * w[2];
 
-						sum += in00[ii] * w[0];
-						sum += in01[ii] * w[1];
-						sum += in02[ii] * w[2];
+							sum += in10[ii] * w[3];
+							sum += in11[ii] * w[4];
+							sum += in12[ii] * w[5];
 
-						sum += in10[ii] * w[3];
-						sum += in11[ii] * w[4];
-						sum += in12[ii] * w[5];
+							sum += in20[ii] * w[6];
+							sum += in21[ii] * w[7];
+							sum += in22[ii] * w[8];
+						}
+						else if(kernelSize == 4){
+							sum += in00[ii] * w[0];
+							sum += in01[ii] * w[1];
+							sum += in02[ii] * w[2];
+							sum += in03[ii] * w[3];
 
-						sum += in20[ii] * w[6];
-						sum += in21[ii] * w[7];
-						sum += in22[ii] * w[8];
+							sum += in10[ii] * w[4];
+							sum += in11[ii] * w[5];
+							sum += in12[ii] * w[6];
+							sum += in13[ii] * w[7];
+
+							sum += in20[ii] * w[8];
+							sum += in21[ii] * w[9];
+							sum += in22[ii] * w[10];
+							sum += in23[ii] * w[11];
+
+							sum += in30[ii] * w[12];
+							sum += in31[ii] * w[13];
+							sum += in32[ii] * w[14];
+							sum += in33[ii] * w[15];
+						}
 					}
 
 					float v = sum;
