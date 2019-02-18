@@ -179,8 +179,6 @@ Model::filter_CPU(ComputeEnv *env,
 		}
 	};
 
-	int w = size.width;
-	int h = size.height;
 	std::vector<std::thread> workerThreads;
 	int nJob = modelUtility::getInstance().getNumberOfJobs();
 	for (int ji=0; ji<nJob; ji++) {
