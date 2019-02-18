@@ -94,6 +94,42 @@ static bool convertWithModelsBasic(W2XConv *conv,
 			std::cout << "Iteration #" << (index + 1) << "(" << nInputPlanes << "->" << nOutputPlanes << ")..." ;
 		}
 		double t0 = getsec();
+		if (models[index]->getPadSize() > 0){
+			cv::Mat cv_inputPlane = copy_to_cvmat(inputPlane);
+			cv::Mat tmpPlane = cv::Mat::zeros(cv::Size(inputPlane.view_width, inputPlane.view_height), inputPlane.type);
+			printf("ccc");
+			for (int oi=0; oi < inputPlane.view_height; oi++){
+				for (int oj=0; oj < inputPlane.view_width; oj++){
+					*(tmpPlane.ptr<cv::Point3_<float> >(models[index]->getStrideSize() * oi, models[index]->getStrideSize() * oj)) = *(cv_inputPlane.ptr<cv::Point3_<float> >(oi, oj));
+				}
+			}
+			printf("aaa");
+			cv::copyMakeBorder(tmpPlane, tmpPlane, models[index]->getPadSize(), models[index]->getPadSize(), models[index]->getPadSize(), models[index]->getPadSize(), cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));	
+			W2Mat paddedPlane = copy_from_cvmat(tmpPlane);
+			std::vector<W2Mat> paddedPlanes;
+			paddedPlanes.emplace_back(W2Mat::clip_view(paddedPlane,0,0,0,0));
+			printf("ddd");
+
+			W2Size filterSize(paddedPlane.view_width, paddedPlane.view_height);
+			int filterWidth = filterSize.width;
+			int filterHeight = filterSize.height;
+			printf("ttt");
+
+			switch (fmt) {
+			case IMAGE_BGR:
+				pack_mat_bgr(packed_input, paddedPlane, filterWidth, filterHeight);
+				break;
+			case IMAGE_RGB:
+				pack_mat_rgb(packed_input, paddedPlane, filterWidth, filterHeight);
+				break;
+			case IMAGE_RGB_F32:
+				pack_mat_rgb_f32(packed_input, paddedPlane, filterWidth, filterHeight);
+				break;
+			case IMAGE_Y:
+				pack_mat(packed_input, paddedPlanes, filterWidth, filterHeight, 1);
+				break;
+			}
+		}
 		if (!models[index]->filter(conv, env, packed_input_buf, packed_output_buf, filterSize)) {
 			std::exit(-1);
 		}
@@ -280,8 +316,8 @@ static bool convertWithModelsBlockSplit(W2XConv *conv,
 		for (int index = 0; index < (int)models.size(); index++) {
 			long long bufsize =
 				(long long)sizeof(float) *
-				(long long)width *
-				(long long)height *
+				((long long)width * models[index]->getStrideSize() + 2 * models[index]->getPadSize()) *
+				((long long)height * models[index]->getStrideSize() + 2 * models[index]->getPadSize()) *
 				(long long)models[index]->getNOutputPlanes();
 
 			max_size = (std::max)(max_size, (long long)bufsize);
