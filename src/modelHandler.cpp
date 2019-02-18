@@ -688,14 +688,14 @@ bool Model::filter(W2XConv *conv,
 	//       (int)avx_available);
 
 	const struct W2XConvProcessor *proc = conv->target_processor;
-	/*if ((cl_available && proc->type == W2XCONV_PROC_OPENCL) ||
+	if ((cl_available && proc->type == W2XCONV_PROC_OPENCL) ||
 	    (cuda_available && proc->type == W2XCONV_PROC_CUDA) ||
 	    (avx_available && proc->type == W2XCONV_PROC_HOST))
 	{
 		ret = filter_AVX_OpenCL(conv, env, packed_input_buf, packed_output_buf, size);
-	} else {*/
+	} else {
 		ret = filter_CPU(env, packed_input_buf, packed_output_buf, size);
-	//}
+	}
 
 	return ret;
 }
