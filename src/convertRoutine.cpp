@@ -95,17 +95,18 @@ static bool convertWithModelsBasic(W2XConv *conv,
 		}
 		double t0 = getsec();
 		if (models[index]->getPadSize() > 0){
-			cv::Mat cv_inputPlane = copy_to_cvmat(inputPlane);
-			cv::Mat tmpPlane = cv::Mat::zeros(cv::Size(inputPlane.view_width, inputPlane.view_height), inputPlane.type);
+			W2Mat tmpPlane(inputPlane.view_width * models[index]->getStrideSize(), inputPlane.view_height * models[index]->getStrideSize(), inputPlane.type);
 			printf("ccc");
 			for (int oi=0; oi < inputPlane.view_height; oi++){
 				for (int oj=0; oj < inputPlane.view_width; oj++){
-					*(tmpPlane.ptr<cv::Point3_<float> >(models[index]->getStrideSize() * oi, models[index]->getStrideSize() * oj)) = *(cv_inputPlane.ptr<cv::Point3_<float> >(oi, oj));
+					memset(&(tmpPlane.ptr<char>(oi)[oj * CV_ELEM_SIZE(inputPlane.type)]), 0, CV_ELEM_SIZE(inputPlane.type));
+					memcpy(&(tmpPlane.ptr<char>(models[index]->getStrideSize() * oi)[models[index]->getStrideSize() * oj * CV_ELEM_SIZE(inputPlane.type)]), &(inputPlane.ptr<char>(oi)[oj * CV_ELEM_SIZE(inputPlane.type)]), CV_ELEM_SIZE(inputPlane.type));
 				}
 			}
 			printf("aaa");
-			cv::copyMakeBorder(tmpPlane, tmpPlane, models[index]->getPadSize(), models[index]->getPadSize(), models[index]->getPadSize(), models[index]->getPadSize(), cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));	
-			W2Mat paddedPlane = copy_from_cvmat(tmpPlane);
+			cv::Mat cv_paddedPlane = copy_to_cvmat(tmpPlane);
+			cv::copyMakeBorder(cv_paddedPlane, cv_paddedPlane, models[index]->getPadSize(), models[index]->getPadSize(), models[index]->getPadSize(), models[index]->getPadSize(), cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));	
+			W2Mat paddedPlane = copy_from_cvmat(cv_paddedPlane);
 			std::vector<W2Mat> paddedPlanes;
 			paddedPlanes.emplace_back(W2Mat::clip_view(paddedPlane,0,0,0,0));
 			printf("ddd");
