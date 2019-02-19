@@ -95,18 +95,28 @@ static bool convertWithModelsBasic(W2XConv *conv,
 		}
 		double t0 = getsec();
 		if (models[index]->getPadSize() > 0){
-			W2Mat tmpPlane(inputPlane.view_width * models[index]->getStrideSize(), inputPlane.view_height * models[index]->getStrideSize(), inputPlane.type);
+			int stride = models[index]->getStrideSize(), padding = models[index]->getPadSize();
+			int w = inputPlane.view_width, h = inputPlane.view_height, elem = CV_ELEM_SIZE(inputPlane.type);
+			cv::Mat tmpPlane(h * stride, w * stride, inputPlane.type, cv::Scalar(0, 0, 0));
 			printf("ccc");
-			for (int oi=0; oi < inputPlane.view_height; oi++){
-				for (int oj=0; oj < inputPlane.view_width; oj++){
-					memset(&(tmpPlane.ptr<char>(oi)[oj * CV_ELEM_SIZE(inputPlane.type)]), 0, CV_ELEM_SIZE(inputPlane.type));
-					memcpy(&(tmpPlane.ptr<char>(models[index]->getStrideSize() * oi)[models[index]->getStrideSize() * oj * CV_ELEM_SIZE(inputPlane.type)]), &(inputPlane.ptr<char>(oi)[oj * CV_ELEM_SIZE(inputPlane.type)]), CV_ELEM_SIZE(inputPlane.type));
+			for (int oi = 0; oi < h; oi++) {
+				for (int oj = 0; oj < w; oj++) {
+					if (elem == 1) {
+						tmpPlane.at<uchar>(oi, oj) = inputPlane.at<uchar>(oi, oj);
+					}
+					else if (elem == 3) {
+						tmpPlane.at<cv::Vec3b>(oi * stride, oj * stride)[0] = inputPlane.at<cv::Vec3b>(oi, oj)[0];
+						tmpPlane.at<cv::Vec3b>(oi * stride, oj * stride)[1] = inputPlane.at<cv::Vec3b>(oi, oj)[1];
+						tmpPlane.at<cv::Vec3b>(oi * stride, oj * stride)[2] = inputPlane.at<cv::Vec3b>(oi, oj)[2];
+					}
 				}
 			}
 			printf("aaa");
-			cv::Mat cv_paddedPlane = copy_to_cvmat(tmpPlane);
-			cv::copyMakeBorder(cv_paddedPlane, cv_paddedPlane, models[index]->getPadSize(), models[index]->getPadSize(), models[index]->getPadSize(), models[index]->getPadSize(), cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));	
-			W2Mat paddedPlane = copy_from_cvmat(cv_paddedPlane);
+			cv::copyMakeBorder(tmpPlane, tmpPlane, padding, padding, padding, padding, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+			W2Mat paddedPlane(w, h, inputPlane.type);
+			for( int yi = 0; yi < h; yi++){
+				memcpy(paddedPlane.ptr<char>(yi), tmpPlane.ptr(yi), w * elem);
+			}
 			std::vector<W2Mat> paddedPlanes;
 			paddedPlanes.emplace_back(W2Mat::clip_view(paddedPlane,0,0,0,0));
 			printf("ddd");
@@ -130,8 +140,11 @@ static bool convertWithModelsBasic(W2XConv *conv,
 				pack_mat(packed_input, paddedPlanes, filterWidth, filterHeight, 1);
 				break;
 			}
-		}
-		if (!models[index]->filter(conv, env, packed_input_buf, packed_output_buf, filterSize)) {
+			printf("vvv");
+			if (!models[index]->filter(conv, env, packed_input_buf, packed_output_buf, filterSize)) {
+				std::exit(-1);
+			}
+		} else if (!models[index]->filter(conv, env, packed_input_buf, packed_output_buf, filterSize)) {
 			std::exit(-1);
 		}
 		double t1 = getsec();
