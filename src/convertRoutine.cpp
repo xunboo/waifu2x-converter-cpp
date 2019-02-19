@@ -94,11 +94,61 @@ static bool convertWithModelsBasic(W2XConv *conv,
 			std::cout << "Iteration #" << (index + 1) << "(" << nInputPlanes << "->" << nOutputPlanes << ")..." ;
 		}
 		double t0 = getsec();
-		if (!models[index]->filter(conv, env, packed_input_buf, packed_output_buf, filterSize)) {
+		if (models[index]->getPadSize() > 0){ // transpoed convolution
+			int stride = models[index]->getStrideSize(), padding = models[index]->getPadSize();
+			int w = inputPlane.view_width, h = inputPlane.view_height, elem = CV_ELEM_SIZE(inputPlane.type);
+			cv::Mat tmpPlane(h * stride, w * stride, inputPlane.type, cv::Scalar(0, 0, 0));
+			printf("ccc");
+			for (int oi = 0; oi < h; oi++) {
+				for (int oj = 0; oj < w; oj++) {
+					if (elem == 1) {
+						tmpPlane.at<uchar>(oi, oj) = inputPlane.at<uchar>(oi, oj);
+					}
+					else if (elem == 3) {
+						tmpPlane.at<cv::Vec3b>(oi * stride, oj * stride)[0] = inputPlane.at<cv::Vec3b>(oi, oj)[0];
+						tmpPlane.at<cv::Vec3b>(oi * stride, oj * stride)[1] = inputPlane.at<cv::Vec3b>(oi, oj)[1];
+						tmpPlane.at<cv::Vec3b>(oi * stride, oj * stride)[2] = inputPlane.at<cv::Vec3b>(oi, oj)[2];
+					}
+				}
+			}
+			printf("aaa");
+			cv::copyMakeBorder(tmpPlane, tmpPlane, padding, padding, padding, padding, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+			W2Mat paddedPlane(w, h, inputPlane.type);
+			for( int yi = 0; yi < h; yi++){
+				memcpy(paddedPlane.ptr<char>(yi), tmpPlane.ptr(yi), w * elem);
+			}
+			std::vector<W2Mat> paddedPlanes;
+			paddedPlanes.emplace_back(W2Mat::clip_view(paddedPlane,0,0,0,0));
+			printf("ddd");
+
+			W2Size filterSize(paddedPlane.view_width, paddedPlane.view_height);
+			int filterWidth = filterSize.width;
+			int filterHeight = filterSize.height;
+			printf("ttt");
+
+			switch (fmt) {
+			case IMAGE_BGR:
+				pack_mat_bgr(packed_input, paddedPlane, filterWidth, filterHeight);
+				break;
+			case IMAGE_RGB:
+				pack_mat_rgb(packed_input, paddedPlane, filterWidth, filterHeight);
+				break;
+			case IMAGE_RGB_F32:
+				pack_mat_rgb_f32(packed_input, paddedPlane, filterWidth, filterHeight);
+				break;
+			case IMAGE_Y:
+				pack_mat(packed_input, paddedPlanes, filterWidth, filterHeight, 1);
+				break;
+			}
+			printf("vvv");
+			if (!models[index]->filter(conv, env, packed_input_buf, packed_output_buf, filterSize)) {
+				std::exit(-1);
+			}
+		} else if (!models[index]->filter(conv, env, packed_input_buf, packed_output_buf, filterSize)) {
 			std::exit(-1);
 		}
 		double t1 = getsec();
-		double ops = filterSize.width * filterSize.height * 9.0 * 2.0 * nOutputPlanes * nInputPlanes;
+		double ops = filterSize.width * filterSize.height * models[index]->getKernelSize() * models[index]->getKernelSize() * 2.0 * nOutputPlanes * nInputPlanes;
 		double gflops = (ops/(1000.0*1000.0*1000.0)) / (t1-t0);
 		double bytes = (double) filterSize.width * filterSize.height * sizeof(float) * (nOutputPlanes + nInputPlanes);
 		double GBs = (bytes/(1000.0*1000.0*1000.0)) / (t1-t0);
@@ -280,8 +330,8 @@ static bool convertWithModelsBlockSplit(W2XConv *conv,
 		for (int index = 0; index < (int)models.size(); index++) {
 			long long bufsize =
 				(long long)sizeof(float) *
-				(long long)width *
-				(long long)height *
+				((long long)width * models[index]->getStrideSize() + 2 * models[index]->getPadSize()) *
+				((long long)height * models[index]->getStrideSize() + 2 * models[index]->getPadSize()) *
 				(long long)models[index]->getNOutputPlanes();
 
 			max_size = (std::max)(max_size, (long long)bufsize);

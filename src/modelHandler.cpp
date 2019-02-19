@@ -41,7 +41,7 @@ int Model::getPadSize() {
 
 
 bool
-Model::filter_CV(ComputeEnv *env,
+Model::filter_CPU_Transposed(ComputeEnv *env,
 		 Buffer *packed_input_buf,
 		 Buffer *packed_output_buf,
 		 const W2Size &size)
@@ -50,61 +50,133 @@ Model::filter_CV(ComputeEnv *env,
 	const float *packed_input = (float*)packed_input_buf->get_read_ptr_host(env, in_size);
 	float *packed_output = (float*)packed_output_buf->get_write_ptr_host(env);
 	
-	
-#if HAVE_OPENCV // HAVE_OPENCV
+	std::atomic<int> yi_shared(0);
 
-	std::vector<cv::Mat> outputPlanes;
-	std::vector<cv::Mat> inputPlanes;
+	auto thread_func = [&](){
+		int w = size.width;
+		int h = size.height;
 
-	for (int i = 0; i < nInputPlanes; i++) {
-		inputPlanes.push_back(cv::Mat::zeros(cvSize_from_w2(size), CV_32FC1));
-	}
-	std::vector<W2Mat> inputPlanes_2(extract_viewlist_from_cvmat(inputPlanes));
-	unpack_mat(inputPlanes_2, packed_input, size.width, size.height, nInputPlanes);
+		while (1) {
+			int yi = yi_shared++;
 
-	outputPlanes.clear();
-	for (int i = 0; i < nOutputPlanes; i++) {
-		outputPlanes.push_back(cv::Mat::zeros(cvSize_from_w2(size), CV_32FC1));
-	}
+			if (yi >= h-3) {
+				break;
+			}
 
-	int nJob = modelUtility::getInstance().getNumberOfJobs();
+			float *out_line = packed_output + w*nOutputPlanes * yi;
 
-	// filter job issuing
-	std::vector<std::thread> workerThreads;
-	int worksPerThread = nOutputPlanes / nJob;
+			int yi0 = yi;
+			int yi1 = yi+1;
+			int yi2 = yi+2;
+			int yi3 = yi+3;
 
-	std::vector<W2Mat> inputPlanes_w2 = extract_viewlist_from_cvmat(inputPlanes);
-	std::vector<W2Mat> outputPlanes_w2 = extract_viewlist_from_cvmat(outputPlanes);
+			if (yi == 0) {
+				yi0 = 0;
+			}
+			const float *in_line0 = packed_input + w * nInputPlanes * yi0;
+			const float *in_line1 = packed_input + w * nInputPlanes * yi1;
+			const float *in_line2 = packed_input + w * nInputPlanes * yi2;
+			const float *in_line3 = packed_input + w * nInputPlanes * yi3;
 
-	for (int idx = 0; idx < nJob; idx++) {
-		if (!(idx == (nJob - 1) && worksPerThread * nJob != nOutputPlanes)) {
-			workerThreads.push_back(
-					std::thread(&Model::filterWorker, this,
-						    std::ref(inputPlanes_w2), std::ref(weights),
-						    std::ref(outputPlanes_w2),
-						    static_cast<unsigned int>(worksPerThread * idx),
-						    static_cast<unsigned int>(worksPerThread)));
-		} else {
-			// worksPerThread * nJob != nOutputPlanes
-			workerThreads.push_back(
-					std::thread(&Model::filterWorker, this,
-						    std::ref(inputPlanes_w2), std::ref(weights),
-						    std::ref(outputPlanes_w2),
-						    static_cast<unsigned int>(worksPerThread * idx),
-						    static_cast<unsigned int>(nOutputPlanes
-									      - worksPerThread * idx)));
+			for (int xi=0; xi<w-3; xi++) {
+				int x0 = xi;
+				int x1 = xi+1;
+				int x2 = xi+2;
+				int x3 = xi+3;
+
+				if (xi == 0) {
+					x0 = 0;
+				}
+
+				const float *in00 = in_line0 + x0 * nInputPlanes;
+				const float *in01 = in_line0 + x1 * nInputPlanes;
+				const float *in02 = in_line0 + x2 * nInputPlanes;
+				const float *in03 = in_line0 + x3 * nInputPlanes;
+
+				const float *in10 = in_line1 + x0 * nInputPlanes;
+				const float *in11 = in_line1 + x1 * nInputPlanes;
+				const float *in12 = in_line1 + x2 * nInputPlanes;
+				const float *in13 = in_line1 + x3 * nInputPlanes;
+
+				const float *in20 = in_line2 + x0 * nInputPlanes;
+				const float *in21 = in_line2 + x1 * nInputPlanes;
+				const float *in22 = in_line2 + x2 * nInputPlanes;
+				const float *in23 = in_line2 + x3 * nInputPlanes;
+
+				const float *in30 = in_line3 + x0 * nInputPlanes;
+				const float *in31 = in_line3 + x1 * nInputPlanes;
+				const float *in32 = in_line3 + x2 * nInputPlanes;
+				const float *in33 = in_line3 + x3 * nInputPlanes;
+
+				for (int oi=0; oi<nOutputPlanes; oi++) {
+					float sum = 0;
+
+					for (int ii=0; ii<nInputPlanes; ii++) {
+						int wMatIndex = nInputPlanes * oi + ii;
+						const float *w = weights[wMatIndex].ptr<float>(0);
+						
+						if(kernelSize == 4){
+							sum += in00[ii] * w[0];
+							sum += in01[ii] * w[1];
+							sum += in02[ii] * w[2];
+							sum += in03[ii] * w[3];
+
+							sum += in10[ii] * w[4];
+							sum += in11[ii] * w[5];
+							sum += in12[ii] * w[6];
+							sum += in13[ii] * w[7];
+
+							sum += in20[ii] * w[8];
+							sum += in21[ii] * w[9];
+							sum += in22[ii] * w[10];
+							sum += in23[ii] * w[11];
+
+							sum += in30[ii] * w[12];
+							sum += in31[ii] * w[13];
+							sum += in32[ii] * w[14];
+							sum += in33[ii] * w[15];
+						}
+					}
+
+					float v = sum;
+					v += (float) biases[oi];
+					float mtz = (std::max)(v, 0.0f);
+					float ltz = (std::min)(v, 0.0f);
+					v = ltz*0.1f + mtz;
+
+					out_line[xi*nOutputPlanes + oi] = v;
+				}
+			}
 		}
+	};
+
+	std::vector<std::thread> workerThreads;
+	int nJob = modelUtility::getInstance().getNumberOfJobs();
+	for (int ji=0; ji<nJob; ji++) {
+		workerThreads.emplace_back(std::thread(thread_func));
 	}
-	// wait for finishing jobs
-	for (auto& th : workerThreads) {
+
+	for (auto&th : workerThreads) {
 		th.join();
 	}
-
-	std::vector<W2Mat> outputPlanes_2(extract_viewlist_from_cvmat(outputPlanes));
-	pack_mat(packed_output, outputPlanes_2, size.width, size.height, nOutputPlanes);
-
 	return true;
-#else
+}
+
+
+
+bool
+Model::filter_CPU(ComputeEnv *env,
+		 Buffer *packed_input_buf,
+		 Buffer *packed_output_buf,
+		 const W2Size &size)
+{
+	if (padSize > 0)
+		return filter_CPU_Transposed(env, packed_input_buf, packed_output_buf, size);
+	
+	size_t in_size = sizeof(float) * size.width * size.height * nInputPlanes;
+	const float *packed_input = (float*)packed_input_buf->get_read_ptr_host(env, in_size);
+	float *packed_output = (float*)packed_output_buf->get_write_ptr_host(env);
+	
 	std::atomic<int> yi_shared(0);
 
 	auto thread_func = [&](){
@@ -123,42 +195,61 @@ Model::filter_CV(ComputeEnv *env,
 			int yi0 = yi-1;
 			int yi1 = yi;
 			int yi2 = yi+1;
+			int yi3 = yi+2;
 
 			if (yi == 0) {
 				yi0 = 0;
 			}
-			if (yi == h-1) {
+			if (yi == h-2) {
+				yi3 = yi1;
+			} 
+			else if (yi == h-1) {
 				yi2 = yi1;
+				yi3 = yi1;
 			}
 
 			const float *in_line0 = packed_input + w * nInputPlanes * yi0;
 			const float *in_line1 = packed_input + w * nInputPlanes * yi1;
 			const float *in_line2 = packed_input + w * nInputPlanes * yi2;
+			const float *in_line3 = packed_input + w * nInputPlanes * yi3;
 
 			for (int xi=0; xi<w; xi++) {
 				int x0 = xi-1;
 				int x1 = xi;
 				int x2 = xi+1;
+				int x3 = xi+2;
 
 				if (xi == 0) {
 					x0 = 0;
 				}
 
-				if (xi == w-1) {
+				if (xi == w-2) {
+					x3 = x1;
+				}
+				else if (xi == w-1) {
 					x2 = x1;
+					x3 = x1;
 				}
 
 				const float *in00 = in_line0 + x0 * nInputPlanes;
 				const float *in01 = in_line0 + x1 * nInputPlanes;
 				const float *in02 = in_line0 + x2 * nInputPlanes;
+				const float *in03 = in_line0 + x3 * nInputPlanes;
 
 				const float *in10 = in_line1 + x0 * nInputPlanes;
 				const float *in11 = in_line1 + x1 * nInputPlanes;
 				const float *in12 = in_line1 + x2 * nInputPlanes;
+				const float *in13 = in_line1 + x3 * nInputPlanes;
 
 				const float *in20 = in_line2 + x0 * nInputPlanes;
 				const float *in21 = in_line2 + x1 * nInputPlanes;
 				const float *in22 = in_line2 + x2 * nInputPlanes;
+				const float *in23 = in_line2 + x3 * nInputPlanes;
+
+				const float *in30 = in_line3 + x0 * nInputPlanes;
+				const float *in31 = in_line3 + x1 * nInputPlanes;
+				const float *in32 = in_line3 + x2 * nInputPlanes;
+				const float *in33 = in_line3 + x3 * nInputPlanes;
 
 				for (int oi=0; oi<nOutputPlanes; oi++) {
 					float sum = 0;
@@ -166,18 +257,41 @@ Model::filter_CV(ComputeEnv *env,
 					for (int ii=0; ii<nInputPlanes; ii++) {
 						int wMatIndex = nInputPlanes * oi + ii;
 						const float *w = weights[wMatIndex].ptr<float>(0);
+						
+						if(kernelSize == 3){
+							sum += in00[ii] * w[0];
+							sum += in01[ii] * w[1];
+							sum += in02[ii] * w[2];
 
-						sum += in00[ii] * w[0];
-						sum += in01[ii] * w[1];
-						sum += in02[ii] * w[2];
+							sum += in10[ii] * w[3];
+							sum += in11[ii] * w[4];
+							sum += in12[ii] * w[5];
 
-						sum += in10[ii] * w[3];
-						sum += in11[ii] * w[4];
-						sum += in12[ii] * w[5];
+							sum += in20[ii] * w[6];
+							sum += in21[ii] * w[7];
+							sum += in22[ii] * w[8];
+						}
+						else if(kernelSize == 4){
+							sum += in00[ii] * w[0];
+							sum += in01[ii] * w[1];
+							sum += in02[ii] * w[2];
+							sum += in03[ii] * w[3];
 
-						sum += in20[ii] * w[6];
-						sum += in21[ii] * w[7];
-						sum += in22[ii] * w[8];
+							sum += in10[ii] * w[4];
+							sum += in11[ii] * w[5];
+							sum += in12[ii] * w[6];
+							sum += in13[ii] * w[7];
+
+							sum += in20[ii] * w[8];
+							sum += in21[ii] * w[9];
+							sum += in22[ii] * w[10];
+							sum += in23[ii] * w[11];
+
+							sum += in30[ii] * w[12];
+							sum += in31[ii] * w[13];
+							sum += in32[ii] * w[14];
+							sum += in33[ii] * w[15];
+						}
 					}
 
 					float v = sum;
@@ -192,8 +306,6 @@ Model::filter_CV(ComputeEnv *env,
 		}
 	};
 
-	int w = size.width;
-	int h = size.height;
 	std::vector<std::thread> workerThreads;
 	int nJob = modelUtility::getInstance().getNumberOfJobs();
 	for (int ji=0; ji<nJob; ji++) {
@@ -203,8 +315,6 @@ Model::filter_CV(ComputeEnv *env,
 	for (auto&th : workerThreads) {
 		th.join();
 	}
-
-#endif
 	return true;
 }
 
@@ -502,7 +612,7 @@ bool Model::filter_AVX_OpenCL(W2XConv *conv,
 		Buffer *packed_output_cv_buf = new Buffer(env, sizeof(float) * size.width * size.height * nOutputPlanes);
 
 		double t0 = getsec();
-		filter_CV(env, packed_input_buf, packed_output_cv_buf, size);
+		filter_CPU(env, packed_input_buf, packed_output_cv_buf, size);
 		//filter_FMA_impl(packed_input, packed_output_cv,
 		//		nInputPlanes, nOutputPlanes, fbiases_flat, weight_flat, size, nJob);
 		double t1 = getsec();
@@ -551,7 +661,7 @@ bool Model::filter_AVX_OpenCL(W2XConv *conv,
 #endif
 
 			default:
-				filter_CV(env, packed_input_buf, packed_output_buf, size);
+				filter_CPU(env, packed_input_buf, packed_output_buf, size);
 				break;
 			}
 		}
@@ -637,7 +747,7 @@ bool Model::filter_AVX_OpenCL(W2XConv *conv,
 				break;
 #endif
 			default:
-				filter_CV(env, packed_input_buf, packed_output_buf, size);
+				filter_CPU(env, packed_input_buf, packed_output_buf, size);
 				break;
 			}
 		}
@@ -711,7 +821,7 @@ bool Model::filter(W2XConv *conv,
 	{
 		ret = filter_AVX_OpenCL(conv, env, packed_input_buf, packed_output_buf, size);
 	} else {
-		ret = filter_CV(env, packed_input_buf, packed_output_buf, size);
+		ret = filter_CPU(env, packed_input_buf, packed_output_buf, size);
 	}
 
 	return ret;
@@ -756,57 +866,6 @@ bool Model::loadModelFromJSONObject(picojson::object &jsonObj) {
 
 	return true;
 }
-
-#ifdef HAVE_OPENCV
-bool Model::filterWorker(std::vector<W2Mat> &inputPlanes_w2,
-			 std::vector<W2Mat> &weightMatrices_w2,
-			 std::vector<W2Mat> &outputPlanes_w2, unsigned int beginningIndex,
-			 unsigned int nWorks) {
-
-	std::vector<cv::Mat> inputPlanes = extract_viewlist_to_cvmat(inputPlanes_w2);
-	std::vector<cv::Mat> weightMatrices = extract_viewlist_to_cvmat(weightMatrices_w2);
-	std::vector<cv::Mat> outputPlanes = extract_viewlist_to_cvmat(outputPlanes_w2);
-	
-	if(padSize > 0)
-		for (cv::Mat ip : inputPlanes)
-				cv::copyMakeBorder(ip, ip, padSize, padSize, padSize, padSize, cv::BORDER_REPLICATE);	
-			 
-	cv::Size ipSize = inputPlanes[0].size();
-	// filter processing
-	// input : inputPlanes
-	// kernel : weightMatrices
-
-	for (int opIndex = beginningIndex;
-	     opIndex < (int)(beginningIndex + nWorks);
-	     opIndex++) {
-		int wMatIndex = nInputPlanes * opIndex;
-		cv::Mat outputPlane = cv::Mat::zeros(ipSize, CV_32FC1);
-		cv::Mat &uIntermediatePlane = outputPlane; // all zero matrix
-
-		for (int ipIndex = 0; ipIndex < nInputPlanes; ipIndex+=strideSize) {
-			cv::Mat &uInputPlane = inputPlanes[ipIndex];
-			cv::Mat &weightMatrix = weightMatrices[wMatIndex + ipIndex];
-			cv::Mat filterOutput = cv::Mat::zeros(ipSize, CV_32FC1);
-			
-			cv::filter2D(uInputPlane, filterOutput, -1, weightMatrix,
-					cv::Point(-1, -1), 0.0, cv::BORDER_REPLICATE);
-
-			cv::add(uIntermediatePlane, filterOutput, uIntermediatePlane);
-		}
-
-		cv::add(uIntermediatePlane, biases[opIndex], uIntermediatePlane);
-		cv::Mat moreThanZero = cv::Mat(ipSize,CV_32FC1,0.0);
-		cv::Mat lessThanZero = cv::Mat(ipSize,CV_32FC1,0.0);
-		(cv::max)(uIntermediatePlane, 0.0, moreThanZero);
-		(cv::min)(uIntermediatePlane, 0.0, lessThanZero);
-		cv::scaleAdd(lessThanZero, 0.1, moreThanZero, uIntermediatePlane);
-		uIntermediatePlane.copyTo(outputPlanes[opIndex]);
-
-	} // for index
-
-	return true;
-}
-#endif
 
 modelUtility * modelUtility::instance = nullptr;
 
@@ -971,26 +1030,13 @@ bool modelUtility::generateModelFromJSON(const std::string &fileName,
 				for (int wi=0; wi<nw; wi++) {
 					W2Mat &wm = weights[wi];
 					double v;
-					v = wm.at<float>(0,0);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(0,1);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(0,2);
-					fwrite(&v, 1, 8, binfp);
-
-					v = wm.at<float>(1,0);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(1,1);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(1,2);
-					fwrite(&v, 1, 8, binfp);
-
-					v = wm.at<float>(2,0);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(2,1);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(2,2);
-					fwrite(&v, 1, 8, binfp);
+					
+					for (uint32_t ki=0; ki<kernelSize; ki++){
+						for (uint32_t kj=0; kj<kernelSize; kj++){
+							v = wm.at<float>(ki,kj);
+							fwrite(&v, 1, 8, binfp);
+						}
+					}
 				}
 
 				std::vector<double> &b = m->getBiases();
