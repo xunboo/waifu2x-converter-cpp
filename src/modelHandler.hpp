@@ -41,6 +41,11 @@ private:
 	// class inside operation function
 	bool loadModelFromJSONObject(picojson::object& jsonObj);
 
+	bool filter_CPU_Transposed(ComputeEnv *env,
+		       Buffer *packed_input,
+		       Buffer *packed_output,
+		       const W2Size &size);
+
 	bool filter_CPU(ComputeEnv *env,
 		       Buffer *packed_input,
 		       Buffer *packed_output,

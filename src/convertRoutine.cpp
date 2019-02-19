@@ -94,7 +94,7 @@ static bool convertWithModelsBasic(W2XConv *conv,
 			std::cout << "Iteration #" << (index + 1) << "(" << nInputPlanes << "->" << nOutputPlanes << ")..." ;
 		}
 		double t0 = getsec();
-		if (models[index]->getPadSize() > 0){
+		if (models[index]->getPadSize() > 0){ // transpoed convolution
 			int stride = models[index]->getStrideSize(), padding = models[index]->getPadSize();
 			int w = inputPlane.view_width, h = inputPlane.view_height, elem = CV_ELEM_SIZE(inputPlane.type);
 			cv::Mat tmpPlane(h * stride, w * stride, inputPlane.type, cv::Scalar(0, 0, 0));
@@ -148,7 +148,7 @@ static bool convertWithModelsBasic(W2XConv *conv,
 			std::exit(-1);
 		}
 		double t1 = getsec();
-		double ops = filterSize.width * filterSize.height * 9.0 * 2.0 * nOutputPlanes * nInputPlanes;
+		double ops = filterSize.width * filterSize.height * models[index]->getKernelSize() * models[index]->getKernelSize() * 2.0 * nOutputPlanes * nInputPlanes;
 		double gflops = (ops/(1000.0*1000.0*1000.0)) / (t1-t0);
 		double bytes = (double) filterSize.width * filterSize.height * sizeof(float) * (nOutputPlanes + nInputPlanes);
 		double GBs = (bytes/(1000.0*1000.0*1000.0)) / (t1-t0);
