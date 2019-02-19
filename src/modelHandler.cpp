@@ -903,26 +903,13 @@ bool modelUtility::generateModelFromJSON(const std::string &fileName,
 				for (int wi=0; wi<nw; wi++) {
 					W2Mat &wm = weights[wi];
 					double v;
-					v = wm.at<float>(0,0);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(0,1);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(0,2);
-					fwrite(&v, 1, 8, binfp);
-
-					v = wm.at<float>(1,0);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(1,1);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(1,2);
-					fwrite(&v, 1, 8, binfp);
-
-					v = wm.at<float>(2,0);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(2,1);
-					fwrite(&v, 1, 8, binfp);
-					v = wm.at<float>(2,2);
-					fwrite(&v, 1, 8, binfp);
+					
+					for (uint32_t ki=0; ki<kernelSize; ki++){
+						for (uint32_t kj=0; kj<kernelSize; kj++){
+							v = wm.at<float>(ki,kj);
+							fwrite(&v, 1, 8, binfp);
+						}
+					}
 				}
 
 				std::vector<double> &b = m->getBiases();
