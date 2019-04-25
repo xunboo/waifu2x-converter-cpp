@@ -172,11 +172,13 @@ W2XCONV_EXPORT const struct W2XConvProcessor *w2xconv_get_processor_list(size_t 
 
 W2XCONV_EXPORT struct W2XConv *w2xconv_init(enum W2XConvGPUMode gpu,
 					    int njob /* 0 = auto */,
-					    int enable_log);
+					    int enable_log,
+                        bool keep_kernel /*= false shall we keep OpenCL kernel or not */);
 
 W2XCONV_EXPORT struct W2XConv *w2xconv_init_with_processor(int processor_idx,
 							   int njob,
-							   int enable_log);
+							   int enable_log,
+                               bool keep_kernel /* = false shall we keep OpenCL kernel or not */);
 
 /* return negative if failed */
 W2XCONV_EXPORT int w2xconv_load_models(struct W2XConv *conv,

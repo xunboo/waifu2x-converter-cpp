@@ -3,7 +3,7 @@
 int
 main(int argc, char **argv)
 {
-    struct W2XConv *c = w2xconv_init(1, 0, 1);
+    struct W2XConv *c = w2xconv_init(1, 0, 1, false);
     const char *models = "models_rgb";
     if (argc >= 2) {
         models = argv[1];

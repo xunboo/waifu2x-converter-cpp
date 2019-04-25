@@ -10,7 +10,7 @@ namespace w2xc {
 void initOpenCLGlobal(std::vector<W2XConvProcessor> *proc_list);
 void initCUDAGlobal(std::vector<W2XConvProcessor> *proc_list);
 
-bool initOpenCL(W2XConv *c, ComputeEnv *env, W2XConvProcessor *proc);
+bool initOpenCL(W2XConv *c, ComputeEnv *env, W2XConvProcessor *proc, bool keep_kernel /*= false*/);
 void finiOpenCL(ComputeEnv *env);
 bool initCUDA(ComputeEnv *env, int dev_id);
 void finiCUDA(ComputeEnv *env);

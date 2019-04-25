@@ -606,8 +606,7 @@ int wmain(void){
 	TCLAP::ValueArg<bool> cmdRecursiveDirectoryIterator("r", "recursive-directory",
 		"Search recursively through directories to find more images to process.\nIf this is set to 0 it will only check in the directory specified if the input is a directory instead of an image.\nYou mustn't supply this argument with something other than 0 or 1.", false,
 		0, "bool", cmd);
-
-
+    
 	TCLAP::SwitchArg cmdQuiet("s", "silent", "Enable silent mode.", cmd, false);
 
 	std::vector<std::string> cmdModeConstraintV;
@@ -723,7 +722,7 @@ int wmain(void){
 		converter = w2xconv_init_with_processor(proc, cmdNumberOfJobs.getValue(), verbose);
 	}
 	else {
-		converter = w2xconv_init(gpu, cmdNumberOfJobs.getValue(), verbose);
+		converter = w2xconv_init(gpu, cmdNumberOfJobs.getValue(), verbose, /*keep_kernel=*/ false);
 	}
 	
 	int imwrite_params[6];
@@ -932,6 +931,8 @@ int main(int argc, char** argv) {
 	TCLAP::SwitchArg cmdForceOpenCL("", "force-OpenCL",
 		"force to use OpenCL on Intel Platform",
 		cmd, false);
+    
+    TCLAP::SwitchArg cmdKeepKernel("k", "keep-kernel", "shall we keep OpenCL kernel", cmd, false);
 
 	TCLAP::SwitchArg cmdDisableGPU("", "disable-gpu", "disable GPU", cmd, false);
 
@@ -1005,12 +1006,13 @@ int main(int argc, char** argv) {
 	w2xconv_get_processor_list(&num_proc);
 	int proc = cmdTargetProcessor.getValue();
 	bool verbose = !cmdQuiet.getValue();
+    bool keep_kernel = cmdKeepKernel.getValue();
 
 	if (proc != -1 && proc < num_proc) {
-		converter = w2xconv_init_with_processor(proc, cmdNumberOfJobs.getValue(), verbose);
+		converter = w2xconv_init_with_processor(proc, cmdNumberOfJobs.getValue(), verbose, false);
 	}
 	else {
-		converter = w2xconv_init(gpu, cmdNumberOfJobs.getValue(), verbose);
+		converter = w2xconv_init(gpu, cmdNumberOfJobs.getValue(), verbose, keep_kernel);
 	}
 	
 	int imwrite_params[6];

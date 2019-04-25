@@ -240,8 +240,10 @@ namespace w2xc {
 	}
 
 	bool
-		initOpenCL(W2XConv *c, ComputeEnv *env, W2XConvProcessor *proc)
+		initOpenCL(W2XConv *c, ComputeEnv *env, W2XConvProcessor *proc, bool keep_kernel = false)
 	{
+        //std::cerr << "DEBUG: Keeping kernel set to " << keep_kernel << std::endl;
+        fprintf(stderr, "DEBUG: Keeping kernel set to %i.\n", (int)keep_kernel);
 		int dev_id = proc->dev_id;
 		env->num_cl_dev = 1;
 		env->cl_dev_list = new OpenCLDev[1];
@@ -338,6 +340,10 @@ namespace w2xc {
 				}
 			}
 			size_t bin_sz = bin_st.st_size;
+            
+            if (keep_kernel)
+                old = false;
+            fprintf(stderr, "DEBUG: old is set to %i.\n", (int)old);
 #else
 			WIN32_FIND_DATAA bin_st;
 			HANDLE finder = FindFirstFileA(bin_path.c_str(), &bin_st);
@@ -349,6 +355,7 @@ namespace w2xc {
 			uint64_t bin_time = (((uint64_t)bin_st.ftLastWriteTime.dwHighDateTime) << 32) |
 				((uint64_t)bin_st.ftLastWriteTime.dwLowDateTime);
 
+            // We only read the kernel if it is older than this execution (?) or if the --keep-kernel argument was set.
 			if (bin_time < self_time) {
 				old = true;
 			}
@@ -356,9 +363,10 @@ namespace w2xc {
 			size_t bin_sz = bin_st.nFileSizeLow;
 #endif
 
+            // We try to read the kernel from file.
 			if (!old) {
 				unsigned char *bin = (unsigned char*)malloc(bin_sz);
-
+                
 				size_t rem = bin_sz;
 				unsigned char *p = bin;
 				while (rem) {
@@ -420,9 +428,7 @@ namespace w2xc {
 			clReleaseContext(context);
 			setCLError(c, dev_id, err);
 			return false;
-		}
-
-
+		} 
 
 #ifdef GENERATE_BINARY
 		if (!bin_avaiable) {
@@ -439,6 +445,7 @@ namespace w2xc {
 			FILE *fp = NULL;
 			while (fp == NULL)
 			{
+                // We try to open the kernel file. If it doens't exist, we create it.
 				fp = fopen(bin_path.c_str(), "wb");
 				if (fp == NULL) {
 					#if (defined __linux)
@@ -457,8 +464,9 @@ namespace w2xc {
 								}
 							}
 							bin_path = user_folder + "/" + dev_nameStr + ".bin";
-							fp = fopen(bin_path.c_str(), "wb");
-							printf("Writing OpenCL-Binary to: %s\n",bin_path.c_str());
+
+                            fp = fopen(bin_path.c_str(), "wb");
+                            printf("Writing OpenCL-Binary to: %s\n",bin_path.c_str());
 						}
 						else {
 							printf("Error opening file %s: [%d] %s\n",bin_path.c_str(),errno,strerror(errno));
