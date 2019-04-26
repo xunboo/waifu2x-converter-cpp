@@ -1,10 +1,11 @@
+
 # Waifu2x source building guides
 
 #### You can download pre-built Windows binaries from:
 
 https://github.com/DeadSix27/waifu2x-converter-cpp/releases
 
-#### Guide Index:
+#### Index:
 - [Windows x64](#windows)
 - [Linux](#linux) (ARM is not supported, but could work maybe, open an issue if you get it working.)
 - [MacOS](#macos--osx)
@@ -38,9 +39,9 @@ https://github.com/DeadSix27/waifu2x-converter-cpp/releases
 
 Install both SDK's as shown above, but later add "-DFORCE_DUAL=ON" to the cmake command.
 
-#### Building with UNICODE support:
+#### Building without UNICODE support:
 
-Add "-DBUILD_UNICODE=ON" to the cmake command.
+Add "-DBUILD_WITHOUT_UNICODE=ON" to the cmake command.
 
 ### Building:
 ##### We will be using `K:/w2x` as our base folder for this guide.
@@ -48,26 +49,41 @@ Add "-DBUILD_UNICODE=ON" to the cmake command.
 
 1. Download OpenCV 4.* [ [opencv-4.*-vc14_vc15.exe](https://opencv.org/releases.html) ]
 
-2. Extract OpenCV to your base folder e.g `K:/w2x/opencv`
+2. Extract OpenCV to your base folder e.g `K:\w2x\opencv`
 
 3. Open a Command prompt and run the following command: `"C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat" x64`
+
 4. Now run these commands in order, to build w2x:
-	```cmd
-		cd "K:/w2x/"
-		git clone "https://github.com/DeadSix27/waifu2x-converter-cpp"
-		cd "waifu2x-converter-cpp"
-		mkdir out && cd out
-		cmake .. -DCMAKE_GENERATOR="Visual Studio 15 2017 Win64" -DOPENCV_PREFIX="K:/w2x/opencv/build/"
-		msbuild waifu2xcpp.sln /p:Configuration=Release /p:Platform=x64
-		copy K:\w2x\opencv\build\x64\vc15\bin\opencv_world400.dll Release\
-		mkdir Release\models_rgb\ && copy ..\models_rgb Release\models_rgb\
+	```bat
+	cd "K:\w2x\"
+	git clone "https://github.com/DeadSix27/waifu2x-converter-cpp"
+	cd "waifu2x-converter-cpp"
+	mkdir out && cd out
+	cmake .. -DCMAKE_GENERATOR="Visual Studio 15 2017 Win64" -DOPENCV_PREFIX="K:/w2x/opencv/build/"
+	msbuild waifu2xcpp.sln /p:Configuration=Release /p:Platform=x64
+	copy K:\w2x\opencv\build\x64\vc15\bin\opencv_world400.dll Release\
+	mkdir Release\models_rgb\ && copy ..\models_rgb Release\models_rgb\
+	cd ..
 	```
----
+5. (Optional) Add to SendTo menu (right click on file in Windows Explorer).
+
+	```bat
+	copy /y w32-apps\install.bat out\Release\
+	copy /y w32-apps\install.js out\Release\
+	copy /y w32-apps\uninstall.bat out\Release\
+	copy /y w32-apps\uninstall.js out\Release\
+	mkdir out\Release\ExtendedSendTo\ && copy /y w32-apps\ExtendedSendTo\ out\Release\ExtendedSendTo\
+	cd out\Release
+	install.bat
+	cd ExtendedSendTo
+	install.wsf
+	cd .. && cd .. && cd ..
+	```
 
 # Linux
 
 ### Requirements:
-- GCC 6+
+- GCC 5+
 - CMake
 - OpenCV 3+
 
@@ -84,7 +100,7 @@ Add "-DBUILD_UNICODE=ON" to the cmake command.
    - sudo apt install mesa-opencl-icd opencl-headers
 
 #### nVidia GPUs:
-- _Feel free to contribute to this guide_
+- (?) Open an issue or a PR if you know the exact packages needed for this.
 
 ### Building:
 ##### If you want to build for all GPU brands, just install all packages (untested, see above).
@@ -101,13 +117,14 @@ If needed run `sudo ldconfig` after the install.
 
 # MacOS / OSX
 
-You need [Homebrew](https://brew.sh) installed, as well as XCode for the compiler.
-The following has been tested on OSX Sierra 10.12.6:
+You need [Homebrew](https://brew.sh) installed, as well as a newer llvm installed (since Xcode's llvm does not have
+ filesystem library)
 
+The following has been tested on macOS Mojave 10.14.3:
 ```
-$ brew tap science && brew install opencv3
+$ brew install llvm opencv
 $ git clone https://github.com/DeadSix27/waifu2x-converter-cpp && cd waifu2x-converter-cpp
-$ cmake -DOPENCV_PREFIX=/usr/local/Cellar/opencv3/<your version here> .
+$ cmake -DOPENCV_PREFIX=/usr/local/Cellar/opencv/<your version here> .
 $ make -j4
 $ cp -r models_rgb models
 ```

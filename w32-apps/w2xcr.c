@@ -389,13 +389,21 @@ proc_thread(void *ap)
             /* finished */
             break;
         }
+		
+		int imwrite_params[6];
+		imwrite_params[0] = 64; //cv::IMWRITE_WEBP_QUALITY;
+		imwrite_params[1] = 90;
+		imwrite_params[2] = 1;  //cv::IMWRITE_JPEG_QUALITY;
+		imwrite_params[3] = 90;
+		imwrite_params[4] = 16; //cv::IMWRITE_PNG_COMPRESSION
+		imwrite_params[5] = 5;
 
         p = &app->path_list[li];
         r = w2xconv_convert_file(c,
                                  p->dst_path,
                                  p->src_path,
                                  p->denoise,
-                                 param_scale, block_size);
+                                 param_scale, block_size, imwrite_params);
 
         if (r != 0) {
             goto error;
@@ -637,14 +645,14 @@ initdlg_callback(HWND wnd, UINT message, WPARAM wParam, LPARAM lParam)
 
     case WM_INITDIALOG:
         SetDlgItemTextA(wnd, IDC_SCALE, "2.0");
-        SendDlgItemMessage(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"none");
-        SendDlgItemMessage(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"0");
-        SendDlgItemMessage(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"1");
-        SendDlgItemMessage(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"2");
-        SendDlgItemMessage(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"0(jpeg only)");
-        SendDlgItemMessage(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"1(jpeg only)");
-        SendDlgItemMessage(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"2(jpeg only)");
-        SendDlgItemMessage(wnd, IDC_DENOISE, CB_SETCURSEL, 1, 0);
+        SendDlgItemMessageA(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"none");
+        SendDlgItemMessageA(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"0");
+        SendDlgItemMessageA(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"1");
+        SendDlgItemMessageA(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"2");
+        SendDlgItemMessageA(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"0(jpeg only)");
+        SendDlgItemMessageA(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"1(jpeg only)");
+        SendDlgItemMessageA(wnd, IDC_DENOISE, CB_ADDSTRING, 0, (LPARAM)"2(jpeg only)");
+        SendDlgItemMessageA(wnd, IDC_DENOISE, CB_SETCURSEL, 1, 0);
         break;
     }
 
