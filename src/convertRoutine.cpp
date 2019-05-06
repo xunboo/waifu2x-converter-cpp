@@ -24,7 +24,7 @@ static bool convertWithModelsBasic(W2XConv *conv,
 				   std::vector<std::unique_ptr<Model> > &models,
 				   W2XConvFlopsCounter *flops,
 				   enum image_format fmt,
-				   bool enableLog);
+				   int log_level);
 static bool convertWithModelsBlockSplit(W2XConv *conv,
 					ComputeEnv *env,
 					W2Mat &inputPlane,
@@ -32,7 +32,7 @@ static bool convertWithModelsBlockSplit(W2XConv *conv,
 					W2XConvFlopsCounter *flops,
 					int blockSize,
 					enum image_format fmt,
-					bool enableLog);
+					int log_level);
 
 bool convertWithModels(W2XConv *conv,
 		       ComputeEnv *env,
@@ -41,11 +41,11 @@ bool convertWithModels(W2XConv *conv,
 		       W2XConvFlopsCounter *flops,
 		       int blockSize,
 		       enum image_format fmt,
-		       bool enableLog)
+		       int log_level)
 {
 	return convertWithModelsBlockSplit(conv, env,
 					   inputPlane, outputPlane,
-					   models, flops, blockSize, fmt, enableLog);
+					   models, flops, blockSize, fmt, log_level);
 }
 
 static bool convertWithModelsBasic(W2XConv *conv,
@@ -55,7 +55,7 @@ static bool convertWithModelsBasic(W2XConv *conv,
 				   Buffer *packed_output_buf,
 				   std::vector<std::unique_ptr<Model> > &models, W2XConvFlopsCounter *flops,
 				   enum image_format fmt,
-				   bool enableLog)
+				   int log_level)
 {
 	// padding is require before calling this function
 
@@ -90,9 +90,9 @@ static bool convertWithModelsBasic(W2XConv *conv,
 		int nOutputPlanes = models[index]->getNOutputPlanes();
 		int nInputPlanes = models[index]->getNInputPlanes();
 
-		if (enableLog) {
-			printf("Iteration #%d(%3d->%3d)...", (index + 1), nInputPlanes, nOutputPlanes);
-		}
+		// if (log_level > 0) {
+			// printf("Iteration #%d(%3d->%3d)...", (index + 1), nInputPlanes, nOutputPlanes);
+		// }
 		double t0 = getsec();
 		if (!models[index]->filter(conv, env, packed_input_buf, packed_output_buf, filterSize)) {
 			std::exit(-1);
@@ -103,9 +103,9 @@ static bool convertWithModelsBasic(W2XConv *conv,
 		double bytes = (double) filterSize.width * filterSize.height * sizeof(float) * (nOutputPlanes + nInputPlanes);
 		double gigabytesPerSec = (bytes/(1000.0*1000.0*1000.0)) / (t1-t0);
 
-		if (enableLog) {
-			printf("(%.5f[ms], %7.2f[GFLOPS], %8.3f[GB/s])\n", t1-t0, gflops, gigabytesPerSec);
-		}
+		// if (log_level > 0) {
+			// printf("(%.5f[ms], %7.2f[GFLOPS], %8.3f[GB/s])\n", t1-t0, gflops, gigabytesPerSec);
+		// }
 		ops_sum += ops;
 
 		flops->flop += ops;
@@ -140,7 +140,7 @@ static bool convertWithModelsBasic(W2XConv *conv,
 		break;
 	}
 
-	if (enableLog) {
+	if (log_level > 0) {
 		double gflops = ops_sum/(1000.0*1000.0*1000.0) / (t01-t00);
 		printf("total : %.3f[sec], %07.2f[GFLOPS]\n", t01-t00, gflops);
 	}
@@ -157,7 +157,7 @@ static bool convertWithModelsBlockSplit(W2XConv *conv,
 					W2XConvFlopsCounter *flops,
 					int blockSize,
 					enum image_format fmt,
-					bool enableLog)
+					int log_level)
 {
 	// padding is not required before calling this function
 
@@ -369,7 +369,7 @@ static bool convertWithModelsBlockSplit(W2XConv *conv,
 							    clipStartX, clipStartY,
 							    curBlockWidth, curBlockHeight));
 
-			if (enableLog) {
+			if (log_level > 0) {
 				printf("Processing block, column (%02d/%02d), row (%02d/%02d) ...\n", (c+1), splitColumns, (r+1), splitRows);
 			}
 
@@ -393,7 +393,7 @@ static bool convertWithModelsBlockSplit(W2XConv *conv,
 			if (!convertWithModelsBasic(conv, env,
 						    processBlock, processBlockOutput,
 						    input_buf, output_buf,
-						    models, flops, fmt, enableLog)) {
+						    models, flops, fmt, log_level)) {
 				std::cerr << "w2xc::convertWithModelsBasic()\n"
 					"in w2xc::convertWithModelsBlockSplit() : \n"
 					"something error has occured. stop." << std::endl;

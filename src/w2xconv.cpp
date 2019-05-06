@@ -357,18 +357,18 @@ select_device(enum W2XConvGPUMode gpu)
 W2XConv *
 w2xconv_init(enum W2XConvGPUMode gpu,
              int nJob,
-	     int enable_log)
+	     int log_level)
 {
 	global_init();
 
 	int proc_idx = select_device(gpu);
-	return w2xconv_init_with_processor(proc_idx, nJob, enable_log);
+	return w2xconv_init_with_processor(proc_idx, nJob, log_level);
 }
 
 struct W2XConv *
 w2xconv_init_with_processor(int processor_idx,
 			    int nJob,
-			    int enable_log)
+			    int log_level)
 {
 	global_init();
 
@@ -406,7 +406,7 @@ w2xconv_init_with_processor(int processor_idx,
 	w2xc::modelUtility::getInstance().setNumberOfJobs(nJob);
 
 	c->impl = impl;
-	c->enable_log = enable_log;
+	c->log_level = log_level;
 	c->target_processor = proc;
 	c->last_error.code = W2XCONV_NOERROR;
 	c->flops.flop = 0;
@@ -679,22 +679,22 @@ apply_denoise(struct W2XConv *conv,
 	if (denoise_level == 0) {
 		w2xc::convertWithModels(conv, env, input_2, output_2,
 					impl->noise0_models,
-					&conv->flops, blockSize, fmt, conv->enable_log);
+					&conv->flops, blockSize, fmt, conv->log_level);
 	}
 	else if (denoise_level == 1) {
 		w2xc::convertWithModels(conv, env, input_2, output_2,
 					impl->noise1_models,
-					&conv->flops, blockSize, fmt, conv->enable_log);
+					&conv->flops, blockSize, fmt, conv->log_level);
 	}
 	else if (denoise_level == 2) {
 		w2xc::convertWithModels(conv, env, input_2, output_2,
 					impl->noise2_models,
-					&conv->flops, blockSize, fmt, conv->enable_log);
+					&conv->flops, blockSize, fmt, conv->log_level);
 	}
 	else if (denoise_level == 3) {
 		w2xc::convertWithModels(conv, env, input_2, output_2,
 					impl->noise3_models,
-					&conv->flops, blockSize, fmt, conv->enable_log);
+					&conv->flops, blockSize, fmt, conv->log_level);
 	}
 
 	*output = copy_to_cvmat(output_2);
@@ -716,7 +716,7 @@ apply_scale(struct W2XConv *conv,
 
 	// 2x scaling
 	for (int nIteration = 0; nIteration < iterTimesTwiceScaling; nIteration++) {
-		if (conv->enable_log) {
+		if (conv->log_level > 0) {
 			printf("Step %02d/%02d, 2x Scaling:\n", w2x_current_step++, w2x_total_steps);
 		}
 		cv::Size imageSize = image.size();
@@ -754,7 +754,7 @@ apply_scale(struct W2XConv *conv,
 					    output_2,
 					    impl->scale2_models,
 					    &conv->flops, blockSize, fmt,
-					    conv->enable_log))
+					    conv->log_level))
 		{
 			std::cerr << "w2xc::convertWithModels : something error has occured.\n"
 				"stop." << std::endl;
@@ -1376,7 +1376,7 @@ w2xconv_convert_mat(struct W2XConv *conv,
 	}
 	
 	if (denoise_level != -1) {
-		if (conv->enable_log) {
+		if (conv->log_level > 0) {
 			printf("Step %02d/%02d: Denoising\n", w2x_current_step++, ++w2x_total_steps);
 		}
 		apply_denoise(conv, image, denoise_level, blockSize, fmt);
@@ -1682,7 +1682,7 @@ convert_mat(struct W2XConv *conv,
 		w2x_total_steps = w2x_total_steps + iterTimesTwiceScaling;
 	}
 	if (denoise_level != -1) {
-		if (conv->enable_log) {
+		if (conv->log_level > 0) {
 			printf("Step %02d/%02d: Denoising\n", w2x_current_step++, ++w2x_total_steps);
 		}
 		apply_denoise(conv, image, denoise_level, blockSize, fmt);
@@ -1855,7 +1855,7 @@ w2xconv_apply_filter_y(struct W2XConv *conv,
 	W2Mat result;
 	w2xc::convertWithModels(conv, env, srci, result,
 				*mp,
-				&conv->flops, blockSize, w2xc::IMAGE_Y, conv->enable_log);
+				&conv->flops, blockSize, w2xc::IMAGE_Y, conv->log_level);
 
 	for (int yi=0; yi<src_h; yi++) {
 		char *d0 = dsti.ptr<char>(yi);

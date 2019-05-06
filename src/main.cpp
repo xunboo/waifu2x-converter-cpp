@@ -593,7 +593,60 @@ char** CommandLineToArgvA( char* CmdLine, int* _argc ) {
 
 #endif
 
+// todo add different formats, e.g json.
+void print_processing_file(int log_level, int numFilesProcessed, int files_count, std::string filename)
+{
+	return;
+	printf("Processing file [%d/%d] \"%s\":%s",
+		numFilesProcessed,
+		files_count,
+		filename.c_str(),
+		(log_level > 0 ? "\n" : " ")
+	);
+}
 
+void print_file_finished(int log_level, double total_elapsed, double time_file, double timeAvg)
+{
+	return;
+	std::ostringstream elapsed_strStream;
+	int el_h = (int) total_elapsed / (60 * 60);
+	int el_m = (int) (total_elapsed - el_h * 60 * 60) / 60;
+	int el_s = (int) (total_elapsed - el_h * 60 * 60 - el_m * 60);
+	if (el_h)
+		elapsed_strStream << el_h << "h";
+	if (el_m)
+		elapsed_strStream << el_m << "h";
+	elapsed_strStream << el_s << "s";
+	std::string total_elapsed_str = elapsed_strStream.str();
+
+	printf("Done, took: %s total, file: %.3fs avg: %.3fs\n", total_elapsed_str.c_str(), time_file, timeAvg);
+}
+			
+
+// todo add different formats, e.g json.
+void print_final_results(
+	int log_level,
+	int numFilesProcessed,
+	double total_time_elapsed,
+	double total_time_filter_elapsed,
+	int files_skipped,
+	int files_errored,
+	double gflops_all,
+	double gflops_filter
+)
+{
+	return;
+	printf("Finished processing %d files%s%.3fsecs total, filter: %.3fsecs; %d files skipped, %d files errored. [GFLOPS: %7.2f, GFLOPS-Filter: %7.2f]\n",
+		numFilesProcessed,
+		(log_level > 0 ? "\nTook: " : ", took: "),
+		total_time_elapsed,
+		total_time_filter_elapsed,
+		files_skipped,
+		files_errored,
+		gflops_all,
+		gflops_filter
+	);
+}
 
 #if defined(WIN32) && defined(UNICODE)
 int wmain(void)
@@ -664,7 +717,9 @@ int main(int argc, char** argv)
 		0, "bool", cmd);
 
 
-	TCLAP::SwitchArg cmdQuiet("s", "silent", "Enable silent mode.", cmd, false);
+	TCLAP::SwitchArg cmdQuiet("s", "silent", "Enable silent mode. (same as --log-level 0)", cmd, false);
+	
+	TCLAP::ValueArg<int> cmdLogLevel("", "log-level", "Set log level (0-2)", false, 2, "integer", cmd);
 
 	std::vector<std::string> cmdModeConstraintV;
 	cmdModeConstraintV.push_back("noise");
@@ -744,6 +799,13 @@ int main(int argc, char** argv)
 		std::cout << "Error: JPEG & WebP Compression quality range is 0-101! (0 being smallest size and lowest quality), use 101 for lossless WebP" << std::endl;
 		std::exit(-1);
 	}
+	if (cmdLogLevel.getValue() < 0 || cmdLogLevel.getValue() > 2)
+	{
+		std::cout << "Error: Log-level has to be within range (0-2), 2 being the noisiest." << std::endl;
+		std::exit(-1);
+	}
+	
+	
 	if(validate_format_extension(cmdOutputFormat.getValue())==false){
 		printf("Unsupported output extension: %s\nUse option --list-supported-formats to see a list of supported formats", cmdOutputFormat.getValue().c_str());
 		std::exit(-1);
@@ -778,13 +840,20 @@ int main(int argc, char** argv)
 	size_t num_proc;
 	w2xconv_get_processor_list(&num_proc);
 	int proc = cmdTargetProcessor.getValue();
-	bool verbose = !cmdQuiet.getValue();
+	
+	// bool verbose = !cmdQuiet.getValue();
+	int log_level = 2;
+	
+	if (cmdQuiet.getValue())
+	{
+		log_level = 0;
+	}
 
 	if (proc != -1 && proc < num_proc) {
-		converter = w2xconv_init_with_processor(proc, cmdNumberOfJobs.getValue(), verbose);
+		converter = w2xconv_init_with_processor(proc, cmdNumberOfJobs.getValue(), log_level);
 	}
 	else {
-		converter = w2xconv_init(gpu, cmdNumberOfJobs.getValue(), verbose);
+		converter = w2xconv_init(gpu, cmdNumberOfJobs.getValue(), log_level);
 	}
 	
 	int imwrite_params[6];
@@ -870,12 +939,8 @@ int main(int argc, char** argv)
 		for (auto &fn : files_list) {
 			++numFilesProcessed;
 			double time_file_start = getsec();
-			printf("Processing file [%d/%d] \"%s\":%s",
-				numFilesProcessed,
-				files_count,
-				fn.filename().string().c_str(),
-				(verbose ? "\n" : " ")
-			);
+			
+			print_processing_file(log_level, numFilesProcessed, files_count, fn.filename().string());
 
 			try {
 #if defined(WIN32) && defined(UNICODE)
@@ -897,16 +962,8 @@ int main(int argc, char** argv)
 				timeAvg = time_all / numFilesProcessed;
 			else
 				timeAvg = time_all;
-			double elapsed = files_count * timeAvg - time_all;
-			int el_h = (int) elapsed / (60 * 60);
-			int el_m = (int) (elapsed - el_h * 60 * 60) / 60;
-			int el_s = (int) (elapsed - el_h * 60 * 60 - el_m * 60);
-			printf("Done, took: ");
-			if (el_h)
-				printf("%dh", el_h);
-			if (el_m)
-				printf("%dm", el_h);
-			printf("%ds total, file: %.3fs avg: %.3fs\n", el_s, time_file, timeAvg);
+			
+			print_file_finished(log_level, (files_count * timeAvg - time_all), time_file, timeAvg);
 		}
 
 
@@ -914,7 +971,7 @@ int main(int argc, char** argv)
 	else {
 		numFilesProcessed++;
 		double time_file_start = getsec();
-		std::cout << "Processing file [1/1] \"" << input << "\":" << (verbose ? "\n" : " ");
+		print_processing_file(log_level, 1, 1, input.string());
 		try {
 #if defined(WIN32) && defined(UNICODE)
 			convert_fileW(convInfo, input, output);
@@ -939,16 +996,7 @@ int main(int argc, char** argv)
 		double gflops_proc = (converter->flops.flop / (1000.0*1000.0*1000.0)) / converter->flops.filter_sec;
 		double gflops_all = (converter->flops.flop / (1000.0*1000.0*1000.0)) / (time_end - time_start);
 
-		printf("Finished processing %d files%s%.3fsecs total, filter: %.3fsecs; %d files skipped, %d files errored. [GFLOPS: %7.2f, GFLOPS-Filter: %7.2f]\n",
-			numFilesProcessed,
-			(verbose ? "\nTook: " : ", took: "),
-			(time_end - time_start),
-			converter->flops.filter_sec,
-			numSkipped,
-			numErrors,
-			gflops_all,
-			gflops_proc
-		);
+		print_final_results(log_level, numFilesProcessed, (time_end - time_start), converter->flops.filter_sec, numSkipped, numErrors, gflops_all, gflops_proc);
 	}
 
 	w2xconv_fini(converter);

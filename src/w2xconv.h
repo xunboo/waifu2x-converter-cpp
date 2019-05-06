@@ -150,7 +150,7 @@ struct W2XConv {
 	struct W2XConvError last_error;
 	struct W2XConvFlopsCounter flops;
 	const struct W2XConvProcessor *target_processor;
-	int enable_log;
+	int log_level;
 
 	/* internal */
 	struct W2XConvImpl *impl;
