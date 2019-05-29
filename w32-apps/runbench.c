@@ -36,7 +36,7 @@ main(int argc, char **argv)
         num_thread = atoi(argv[3]);
     }
 
-    struct W2XConv *c = w2xconv_init_with_processor(proc, num_thread, 1);
+    struct W2XConv *c = w2xconv_init_with_processor(proc, num_thread, 1, false);
     puts(proc_list[proc].dev_name);
 
     int num_maps[7] = {

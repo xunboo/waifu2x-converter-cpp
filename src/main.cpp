@@ -795,6 +795,9 @@ int main(int argc, char** argv)
 	TCLAP::SwitchArg cmdForceOpenCL("", "force-OpenCL", "force to use OpenCL on Intel Platform",
 		cmd, false
 	);
+	TCLAP::SwitchArg cmdKeepKernel("k", "keep-kernel", "shall we keep OpenCL kernel", 
+		cmd, false
+	);
 	TCLAP::SwitchArg cmdDisableGPU("", "disable-gpu", "disable GPU",
 		cmd, false
 	);
@@ -906,11 +909,11 @@ int main(int argc, char** argv)
 
 	if (proc != -1 && proc < num_proc)
 	{
-		converter = w2xconv_init_with_processor(proc, cmdNumberOfJobs.getValue(), log_level);
+		converter = w2xconv_init_with_processor(proc, cmdNumberOfJobs.getValue(), log_level, false);
 	}
 	else
 	{
-		converter = w2xconv_init(gpu, cmdNumberOfJobs.getValue(), log_level);
+		converter = w2xconv_init(gpu, cmdNumberOfJobs.getValue(), log_level, keep_kernel);
 	}
 	
 	int jpeg_quality = 90;

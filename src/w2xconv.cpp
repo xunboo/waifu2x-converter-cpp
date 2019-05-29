@@ -365,15 +365,15 @@ static int select_device(enum W2XConvGPUMode gpu)
 	return 0; // ??
 }
 
-W2XConv * w2xconv_init(enum W2XConvGPUMode gpu, int nJob, int log_level)
+W2XConv * w2xconv_init(enum W2XConvGPUMode gpu, int nJob, int log_level, bool keep_kernel = false)
 {
 	global_init();
 
 	int proc_idx = select_device(gpu);
-	return w2xconv_init_with_processor(proc_idx, nJob, log_level);
+	return w2xconv_init_with_processor(proc_idx, nJob, log_level, keep_kernel);
 }
 
-struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int log_level)
+struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int log_level, bool keep_kernel = false)
 {
 	global_init();
 
@@ -397,7 +397,7 @@ struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int lo
 		}
 		case W2XCONV_PROC_OPENCL:
 		{
-			r = w2xc::initOpenCL(c, &impl->env, proc);
+			r = w2xc::initOpenCL(c, &impl->env, proc, keep_kernel);
 			if (!r) {
 				return NULL;
 			}
