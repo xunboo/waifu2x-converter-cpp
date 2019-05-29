@@ -1,6 +1,8 @@
 #include "w2xconv.h"
 
 #if defined(WIN32) && defined(UNICODE)
+#pragma comment ( linker, "/entry:\"wmainCRTStartup\"" )
+
 int wmain(void)
 #else
 int main(int argc, char** argv)
