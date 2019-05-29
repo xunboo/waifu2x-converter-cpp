@@ -413,7 +413,7 @@ namespace w2xc
 			if (c->keep_kernel || !old)
 			{
 				unsigned char *bin = (unsigned char*)malloc(bin_sz);
-				
+
 				size_t rem = bin_sz;
 				unsigned char *p = bin;
 				while (rem) {
@@ -532,7 +532,7 @@ namespace w2xc
 									exit(EXIT_FAILURE);
 								}
 							}
-							
+
 							bin_path = user_folder + "/" + dev_nameStr + ".bin";
 							fp = fopen(bin_path.c_str(), "wb");
 							printf("Writing OpenCL-Binary to: %s\n",bin_path.c_str());

@@ -1,10 +1,19 @@
 #include "w2xconv.h"
 
-int
-main(int argc, char **argv)
+#if defined(WIN32) && defined(UNICODE)
+int wmain(void)
+#else
+int main(int argc, char** argv)
+#endif
 {
-    struct W2XConv *c = w2xconv_init(1, 0, 1, 0);
+#if defined(WIN32) && defined(UNICODE)
+	int argc = 0;
+	LPWSTR *argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    LPWSTR models = L"models_rgb";
+#else
     const char *models = "models_rgb";
+#endif
+    struct W2XConv *c = w2xconv_init(1, 0, 1, 0);
     if (argc >= 2) {
         models = argv[1];
     }
