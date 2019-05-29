@@ -403,7 +403,8 @@ namespace w2xc
 			uint64_t bin_time = (((uint64_t)bin_st.ftLastWriteTime.dwHighDateTime) << 32) |
 				((uint64_t)bin_st.ftLastWriteTime.dwLowDateTime);
 
-			if (bin_time < self_time) {
+			if (bin_time < self_time)
+			{
 				old = true;
 			}
 
@@ -530,7 +531,6 @@ namespace w2xc
 									exit(EXIT_FAILURE);
 								}
 							}
-
 							bin_path = user_folder + "/" + dev_nameStr + ".bin";
 
 							fp = fopen(bin_path.c_str(), "wb");
