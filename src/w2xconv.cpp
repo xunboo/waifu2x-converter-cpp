@@ -365,15 +365,15 @@ static int select_device(enum W2XConvGPUMode gpu)
 	return 0; // ??
 }
 
-W2XConv * w2xconv_init(enum W2XConvGPUMode gpu, int nJob, int log_level)
+W2XConv * w2xconv_init(enum W2XConvGPUMode gpu, int nJob, int log_level, bool keep_kernel)
 {
 	global_init();
 
 	int proc_idx = select_device(gpu);
-	return w2xconv_init_with_processor(proc_idx, nJob, log_level);
+	return w2xconv_init_with_processor(proc_idx, nJob, log_level, keep_kernel);
 }
 
-struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int log_level)
+struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int log_level, bool keep_kernel)
 {
 	global_init();
 
@@ -387,6 +387,8 @@ struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int lo
 	}
 
 	bool r;
+	
+	c->keep_kernel = keep_kernel;
 
 	switch (proc->type)
 	{
@@ -416,6 +418,7 @@ struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int lo
 
 	c->impl = impl;
 	c->log_level = log_level;
+	c->keep_kernel = false;
 	c->target_processor = proc;
 	c->last_error.code = W2XCONV_NOERROR;
 	c->flops.flop = 0;

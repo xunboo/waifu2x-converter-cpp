@@ -410,7 +410,7 @@ namespace w2xc
 
 			size_t bin_sz = bin_st.nFileSizeLow;
 #endif
-			if (!old)
+			if (c->keep_kernel || !old)
 			{
 				unsigned char *bin = (unsigned char*)malloc(bin_sz);
 

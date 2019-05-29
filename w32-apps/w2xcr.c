@@ -334,7 +334,7 @@ proc_thread(void *ap)
     WCHAR *self_path = (WCHAR*)malloc((path_len+1) * sizeof(WCHAR));
     DWORD len;
 
-    c = w2xconv_init_with_processor(ta->dev_id, 0, 0);
+    c = w2xconv_init_with_processor(ta->dev_id, 0, 0, FALSE);
     while (1) {
         len = GetModuleFileNameW(NULL, self_path, (DWORD) path_len);
         if (len > 0 && len != path_len) {
