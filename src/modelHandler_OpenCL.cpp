@@ -407,15 +407,14 @@ namespace w2xc
 			uint64_t bin_time = (((uint64_t)bin_st.ftLastWriteTime.dwHighDateTime) << 32) |
 				((uint64_t)bin_st.ftLastWriteTime.dwLowDateTime);
 
-            // We only read the kernel if it is older than this execution (?) or if the --keep-kernel argument was set.
-			if (bin_time < self_time) {
+            if (bin_time < self_time) {
 				old = true;
 			}
 
 			size_t bin_sz = bin_st.nFileSizeLow;
 #endif
-			// We try to read the kernel from file.
-			if (!old) {
+			if (c->keep_kernel || !old)
+			{
 				unsigned char *bin = (unsigned char*)malloc(bin_sz);
                 
 				size_t rem = bin_sz;

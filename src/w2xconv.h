@@ -205,6 +205,7 @@ struct W2XConv
 	struct W2XConvFlopsCounter flops;
 	const struct W2XConvProcessor *target_processor;
 	int log_level;
+	bool keep_kernel;
 
 	/* internal */
 	struct W2XConvImpl *impl;
