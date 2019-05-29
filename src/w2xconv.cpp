@@ -399,7 +399,7 @@ struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int lo
 		}
 		case W2XCONV_PROC_OPENCL:
 		{
-			r = w2xc::initOpenCL(c, &impl->env, proc, keep_kernel);
+			r = w2xc::initOpenCL(c, &impl->env, proc);
 			if (!r) {
 				return NULL;
 			}

@@ -274,7 +274,7 @@ namespace w2xc
 		}
 	}
 
-	bool initOpenCL(W2XConv *c, ComputeEnv *env, W2XConvProcessor *proc, bool keep_kernel = false)
+	bool initOpenCL(W2XConv *c, ComputeEnv *env, W2XConvProcessor *proc)
 	{
 		int dev_id = proc->dev_id;
 		env->num_cl_dev = 1;
@@ -390,10 +390,6 @@ namespace w2xc
 			}
 
 			size_t bin_sz = bin_st.st_size;
-            
-            if (keep_kernel)
-                old = false;
-            fprintf(stderr, "DEBUG: old is set to %i.\n", (int)old);
 #else
 			WIN32_FIND_DATAA bin_st;
 			HANDLE finder = FindFirstFileA(bin_path.c_str(), &bin_st);
@@ -407,7 +403,7 @@ namespace w2xc
 			uint64_t bin_time = (((uint64_t)bin_st.ftLastWriteTime.dwHighDateTime) << 32) |
 				((uint64_t)bin_st.ftLastWriteTime.dwLowDateTime);
 
-            if (bin_time < self_time) {
+			if (bin_time < self_time) {
 				old = true;
 			}
 
@@ -416,7 +412,6 @@ namespace w2xc
 			if (c->keep_kernel || !old)
 			{
 				unsigned char *bin = (unsigned char*)malloc(bin_sz);
-                
 				size_t rem = bin_sz;
 				unsigned char *p = bin;
 				while (rem) {
@@ -508,7 +503,6 @@ namespace w2xc
 
 			while (fp == NULL)
 			{
-                // We try to open the kernel file. If it doens't exist, we create it.
 				fp = fopen(bin_path.c_str(), "wb");
 
 				if (fp == NULL)
@@ -539,8 +533,8 @@ namespace w2xc
 
 							bin_path = user_folder + "/" + dev_nameStr + ".bin";
 
-                            fp = fopen(bin_path.c_str(), "wb");
-                            printf("Writing OpenCL-Binary to: %s\n",bin_path.c_str());
+							fp = fopen(bin_path.c_str(), "wb");
+							printf("Writing OpenCL-Binary to: %s\n",bin_path.c_str());
 						}
 						else
 						{
