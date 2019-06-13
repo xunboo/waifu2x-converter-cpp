@@ -41,6 +41,7 @@
 	#define	_tcscmp		wcscmp
 	#define	_tcsncmp	wcsncmp
 	#define _tcsstr		wcsstr
+	#define _tcsdup		wcsdup
 	#define _tcsrev		_wcsrev
 	#define	_tprintf	wprintf
 	#define	_stprintf	swprintf
@@ -60,6 +61,7 @@
 	#define	_tcscmp		strcmp
 	#define _tcsncmp	strncmp
 	#define _tcsstr		strstr
+	#define _tcsdup		strdup
 	#define _tcsrev		strrev
 	#define	_tprintf	printf
 	#define	_stprintf	sprintf

@@ -1019,6 +1019,8 @@ int main(int argc, char** argv)
 		}
 	}
 	
+	((std::thread*)converter->imwrite_thread)->join();
+	
 	if (log_level >= 1)
 	{
 		double time_end = getsec();

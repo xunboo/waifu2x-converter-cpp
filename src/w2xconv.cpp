@@ -21,6 +21,7 @@
 #endif
 
 #include <limits.h>
+#include <future>
 #include <sstream>
 
 #include "w2xconv.h"
@@ -374,6 +375,7 @@ struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int lo
 	struct W2XConv *c = new struct W2XConv;
 	struct W2XConvImpl *impl = new W2XConvImpl;
 	struct W2XConvProcessor *proc = &processor_list[processor_idx];
+	c->imwrite_thread = nullptr;
 
 	if (nJob == 0)
 	{
@@ -1958,6 +1960,33 @@ void w2xconv_convert_mat
 	#define write_image cv::imwrite
 #endif
 
+struct ImwriteSetting{
+	W2XConv* conv;
+	const TCHAR* filepath;
+	cv::Mat* image;
+	std::vector<int> imwrite_params;
+	std::promise<int>* retVal;
+};
+
+int imwrite_thread_proc(ImwriteSetting imwriteSetting){
+	std::cout << "in";
+	W2XConv* conv = imwriteSetting.conv;
+	std::cout << "in";
+	TCHAR* filepath = _tcsdup(imwriteSetting.filepath);
+	std::cout << "in";
+	cv::Mat output = imwriteSetting.image->clone();
+	std::cout << "in";
+	
+	std::cout << "thread:\nto: " << filepath << std::endl;
+	
+	if(!write_image(filepath, output, imwriteSetting.imwrite_params)){
+		setPathError(conv, W2XCONV_ERROR_IMWRITE_FAILED, filepath);
+		return -1;
+	}
+	
+	return 0;
+}
+
 int w2xconv_convert_file
 (
 	struct W2XConv *conv,
@@ -1969,6 +1998,9 @@ int w2xconv_convert_file
 	int* imwrite_params
 )
 {
+	static std::promise<int> retVal;
+	static auto f = retVal.get_future();
+	static ImwriteSetting imwriteSetting;
 	double time_start = getsec();
 
 	FILE *png_fp = nullptr;
@@ -2082,10 +2114,26 @@ int w2xconv_convert_file
 		vec_imwrite_params.push_back(imwrite_params[i]);
 	}
 	
-	if (!write_image(dst_path, image_dst, vec_imwrite_params))
-	{
-		setPathError(conv, W2XCONV_ERROR_IMWRITE_FAILED, dst_path);
-		return -1;
+	imwriteSetting.conv = conv;
+	imwriteSetting.filepath = dst_path;
+	imwriteSetting.image = &image_dst.clone();
+	imwriteSetting.imwrite_params = vec_imwrite_params;
+	imwriteSetting.retVal = &retVal;
+	
+	std::thread* pt_imwrite = ((std::thread*)conv->imwrite_thread);
+	
+	if(conv->imwrite_thread == nullptr){
+		*pt_imwrite = std::thread(imwrite_thread_proc, imwriteSetting);
+	
+	}
+	else{
+		pt_imwrite->join();
+		if(f.get() == -1){
+			*pt_imwrite = std::thread(imwrite_thread_proc, imwriteSetting);
+			return -1;
+		}
+		else
+			*pt_imwrite = std::thread(imwrite_thread_proc, imwriteSetting);
 	}
 
 	double time_end = getsec();
