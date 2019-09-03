@@ -20,6 +20,12 @@
 #endif
 #endif
 
+#ifdef PPCOPT
+#ifdef HAVE_AUXV
+#include <sys/auxv.h>
+#endif
+#endif
+
 #include <limits.h>
 #include <sstream>
 
@@ -127,7 +133,28 @@ static void global_init2(void)
 			host.dev_name = "ARM NEON";
 			host.sub_type = W2XCONV_PROC_HOST_NEON;
 		}
-#endif
+#endif // ARMOPT
+
+#ifdef PPCOPT
+		bool have_altivec = false;
+#ifdef HAVE_AUXV
+		unsigned long cap = getauxval(AT_HWCAP);
+		if (cap & (1U << 28)) /* HWCAP_ALTIVEC */
+		{
+			have_altivec = true;
+		}
+#else
+		/* Assume that the machine has AltiVec
+		 * since it passed the compile-time check. */
+		have_altivec = true;
+#endif // HAVE_AUXV
+		if (have_altivec)
+		{
+			host.dev_name = "PowerPC AltiVec";
+			host.sub_type = W2XCONV_PROC_HOST_ALTIVEC;
+		}
+#endif // PPCOPT
+
 		processor_list.push_back(host);
 	}
 
@@ -361,13 +388,23 @@ static int select_device(enum W2XConvGPUMode gpu)
 
 W2XConv * w2xconv_init(enum W2XConvGPUMode gpu, int nJob, int log_level)
 {
+	return w2xconv_init_with_tta(gpu, nJob, log_level, false);
+}
+
+W2XConv * w2xconv_init_with_tta(enum W2XConvGPUMode gpu, int nJob, int log_level, bool tta_mode)
+{
 	global_init();
 
 	int proc_idx = select_device(gpu);
-	return w2xconv_init_with_processor(proc_idx, nJob, log_level);
+	return w2xconv_init_with_processor_and_tta(proc_idx, nJob, log_level, tta_mode);
 }
 
 struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int log_level)
+{
+	return w2xconv_init_with_processor_and_tta(processor_idx, nJob, log_level, false);
+}
+
+struct W2XConv * w2xconv_init_with_processor_and_tta(int processor_idx, int nJob, int log_level, bool tta_mode)
 {
 	global_init();
 
@@ -410,6 +447,7 @@ struct W2XConv * w2xconv_init_with_processor(int processor_idx, int nJob, int lo
 
 	c->impl = impl;
 	c->log_level = log_level;
+	c->tta_mode = tta_mode;
 	c->target_processor = proc;
 	c->last_error.code = W2XCONV_NOERROR;
 	c->flops.flop = 0;
@@ -1350,6 +1388,10 @@ void get_png_background_colour(FILE *png_fp, bool *has_alpha, struct w2xconv_rgb
 	const static unsigned char sig_ster[4] = {'s','T','E','R'};
 	const static unsigned char sig_txmp[4] = {'t','X','M','P'};
 	const static unsigned char sig_zxif[4] = {'z','x','I','f'};
+	
+	//webp file signature
+	const static unsigned char sig_riff[4] = {'R','I','F','F'};
+	const static unsigned char sig_webp[4] = {'W','E','B','P'};
 
 
 	const static unsigned char *sig_ignores[] = // array of unused PNG chunks and their signature.
@@ -1372,14 +1414,42 @@ void get_png_background_colour(FILE *png_fp, bool *has_alpha, struct w2xconv_rgb
 	size_t rdsz = fread(sig, 1, 8, png_fp);
 	if (rdsz != 8)
 	{
-		//DEBUG printf("png_sig rdsz is not 8, rdsz: %zu, sig: %.8s\n", rdsz, sig);
+		//DEBUG printf("sig_png rdsz is not 8, rdsz: %zu, sig: %.8s\n", rdsz, sig);
 		return;
 	}
 	
 	//check if file signatures match
 	if (memcmp(sig_png, sig, 8) != 0)
 	{
-		//DEBUG printf("png_sig does not match, sig: %.8s\n", sig);
+		fseek(png_fp, -8L, SEEK_CUR);
+		rdsz = fread(sig, 1, 4, png_fp);
+		if (rdsz != 4)
+		{
+			//DEBUG printf("sig_webp rdsz is not 4, rdsz: %zu, sig: %.4s\n", rdsz, sig);
+			return;
+		}
+		if (memcmp(sig_riff, sig, 4) != 0)
+		{
+			//DEBUG fseek(png_fp, -4L, SEEK_CUR);
+			//DEBUG rdsz = fread(sig, 1, 8, png_fp);
+			//DEBUG printf("sig_png/sig_webp does not match, sig: %.8s\n", sig);
+			return;
+		}
+		int webp_size = read_int4(png_fp);
+		rdsz = fread(sig, 1, 4, png_fp);
+		if (rdsz != 4)
+		{
+			//DEBUG printf("sig_webp rdsz is not 4, rdsz: %zu, sig: %.4s\n", rdsz, sig);
+			return;
+		}
+		if (memcmp(sig_webp, sig, 4) != 0)
+		{
+			//DEBUG fseek(png_fp, -4L, SEEK_CUR);
+			//DEBUG rdsz = fread(sig, 1, 8, png_fp);
+			//DEBUG printf("sig_png/sig_webp does not match, sig: %.8s\n", sig);
+			return;
+		}
+		*has_alpha = true;
 		return;
 	}
 	
@@ -1654,8 +1724,8 @@ void w2xconv_convert_mat
 	double scale, 
 	int blockSize,
 	w2xconv_rgb_float3 background,
-	bool png_rgb,
-	bool dst_png
+	bool has_alpha,
+	bool dst_alpha
 )
 {				
 	bool is_rgb = (conv->impl->scale2_models[0]->getNInputPlanes() == 3);
@@ -1669,7 +1739,7 @@ void w2xconv_convert_mat
 
 	if (is_rgb)
 	{
-		if (png_rgb)
+		if (has_alpha)
 		{
 			if (src_cn == 4)
 			{
@@ -1697,7 +1767,7 @@ void w2xconv_convert_mat
 	}
 	else
 	{
-		if (png_rgb)
+		if (has_alpha)
 		{
 			if (src_cn == 4)
 			{
@@ -1756,7 +1826,58 @@ void w2xconv_convert_mat
 				printf("Proccessing [%d/%zu] slices\n", i+1, pieces.size());
 			}
 			
-			apply_denoise(conv, pieces[i], denoise_level, blockSize, fmt);
+			if(conv->tta_mode)
+			{
+				cv::Mat tta_mat;
+				for(int ti=0; ti<8; ti++)
+				{
+					cv::Mat tmp=pieces[i].clone();
+					
+					if (conv->log_level >= 2)
+					{
+						printf("Working on TTA mode... step%d/8\n", ti+1);
+					}
+					
+					for(int tj=0; tj < ti%4; tj++)
+					{
+						cv::transpose(tmp, tmp);
+						cv::flip(tmp, tmp, 1);
+					}
+					
+					if(ti >= 4)
+					{
+						cv::flip(tmp, tmp, 1);
+					}
+					
+					apply_denoise(conv, tmp, denoise_level, blockSize, fmt);
+					
+					if(ti >= 4)
+					{
+						cv::flip(tmp, tmp, 1);
+					}
+					
+					for(int tj=0; tj < ti%4; tj++)
+					{
+						cv::transpose(tmp, tmp);
+						cv::flip(tmp, tmp, 0);
+					}
+					
+					if(ti==0)
+					{
+						tta_mat=tmp.clone();
+					}
+					else
+					{
+						tta_mat+=tmp;
+					}
+				}
+				tta_mat /= 8.0;
+				pieces[i] = tta_mat.clone();
+			}
+			else
+			{
+				apply_denoise(conv, pieces[i], denoise_level, blockSize, fmt);
+			}
 		}
 		
 		if (pieces.size() > 1 && conv->log_level >= 2)
@@ -1795,7 +1916,58 @@ void w2xconv_convert_mat
 					printf("Proccessing [%d/%zu] slices\n", i+1, pieces.size());
 				}
 				
-				apply_scale(conv, pieces[i], 1, blockSize, fmt);
+				if(conv->tta_mode)
+				{
+					cv::Mat tta_mat;
+					for(int ti=0; ti<8; ti++)
+					{
+						cv::Mat tmp=pieces[i].clone();
+						
+						if (conv->log_level >= 2)
+						{
+							printf("Working on TTA mode... step%d/8\n", ti+1);
+						}
+						
+						for(int tj=0; tj < ti%4; tj++)
+						{
+							cv::transpose(tmp, tmp);
+							cv::flip(tmp, tmp, 1);
+						}
+						
+						if(ti >= 4)
+						{
+							cv::flip(tmp, tmp, 1);
+						}
+						
+						apply_scale(conv, tmp, 1, blockSize, fmt);
+						
+						if(ti >= 4)
+						{
+							cv::flip(tmp, tmp, 1);
+						}
+						
+						for(int j=0; j < ti%4; j++)
+						{
+							cv::transpose(tmp, tmp);
+							cv::flip(tmp, tmp, 0);
+						}
+						
+						if(ti==0)
+						{
+							tta_mat=tmp.clone();
+						}
+						else
+						{
+							tta_mat+=tmp;
+						}
+					}
+					tta_mat /= 8.0;
+					pieces[i] = tta_mat.clone();
+				}
+				else
+				{
+					apply_scale(conv, pieces[i], 1, blockSize, fmt);
+				}
 				
 				/*
 				sprintf(name, "[test] step%d_slice%d_converted.webp", ld, i);
@@ -1822,7 +1994,7 @@ void w2xconv_convert_mat
 		}
 	}
 
-	if (alpha.empty() || !dst_png)
+	if (alpha.empty() || !dst_alpha)
 	{
 		*image_dst = cv::Mat(image.size(), CV_MAKETYPE(src_depth,3));
 
@@ -1981,12 +2153,12 @@ int w2xconv_convert_file
 		return -1;
 	}
 
-	bool png_rgb;
+	bool has_alpha;
 	//Background colour
 	//float3 background(1.0f, 1.0f, 1.0f);
 	w2xconv_rgb_float3 background;
 	background.r = background.g = background.b = 1.0f;
-	get_png_background_colour(png_fp, &png_rgb, &background);
+	get_png_background_colour(png_fp, &has_alpha, &background);
 
 	if (png_fp)
 	{
@@ -2002,7 +2174,7 @@ int w2xconv_convert_file
 	 * IMREAD_UNCHANGED + otherwise : ???
 	 */
 	
-	if (png_rgb)
+	if (has_alpha)
 	{
 		image_src = read_image(src_path, cv::IMREAD_UNCHANGED);
 	}
@@ -2011,7 +2183,7 @@ int w2xconv_convert_file
 		image_src = read_image(src_path, cv::IMREAD_COLOR);
 	}
 	
-	bool dst_png = false;
+	bool dst_alpha = false;
 	bool dst_webp = false;
 	{
 		size_t len = _tcslen(dst_path);
@@ -2019,12 +2191,13 @@ int w2xconv_convert_file
 			if (_totlower(dst_path[len-5]) == _T('.') && _totlower(dst_path[len-4]) == _T('w') && _totlower(dst_path[len-3]) == _T('e') && _totlower(dst_path[len-2]) == _T('b') && _totlower(dst_path[len-1]) == _T('p'))
 			{
 				dst_webp=true;
+				dst_alpha=true;
 			}
 		}
 		if (len >= 3) {
 			if (_totlower(dst_path[len-4]) == _T('.') && _totlower(dst_path[len-3]) == _T('p') && _totlower(dst_path[len-2]) == _T('n') && _totlower(dst_path[len-1]) == _T('g'))
 			{
-				dst_png = true;
+				dst_alpha = true;
 			}
 		}
 	}
@@ -2074,7 +2247,7 @@ int w2xconv_convert_file
 		printf("Scaling image from %dx%d to %dx%d\n", image_src.cols, image_src.rows, (int) (image_src.cols * scale), (int) (image_src.rows * scale));
 	}
 	
-	w2xconv_convert_mat(conv, &image_dst, &image_src, denoise_level, scale, blockSize, background, png_rgb, dst_png);
+	w2xconv_convert_mat(conv, &image_dst, &image_src, denoise_level, scale, blockSize, background, has_alpha, dst_alpha);
 	
 	if (conv->log_level >= 2)
 	{
