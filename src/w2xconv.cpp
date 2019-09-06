@@ -2,6 +2,7 @@
 #define _WIN32_WINNT 0x0600
 
 #define ENABLE_AVX 1
+#define CROP_ALPHA 1
 
 #include <thread>
 
@@ -1617,8 +1618,6 @@ void get_png_background_colour(FILE *png_fp, bool *has_alpha, struct w2xconv_rgb
 
 void slice_into_pieces(std::vector<cv::Mat> &pieces, const cv::Mat &image, const int max_scale=2)
 {
-	//char name[70]="";	// for imwrite test
-	
 	pieces.push_back(image);
 	
 	while(pieces[0].rows * pieces[0].cols > OUTPUT_SIZE_MAX / max_scale / max_scale)
@@ -1638,7 +1637,7 @@ void slice_into_pieces(std::vector<cv::Mat> &pieces, const cv::Mat &image, const
 	/*
 	for(int i=0; i<pieces.size(); i++)
 	{
-		
+		char name[70]="";	// for imwrite test	
 		sprintf(name, "[test] step%d_slice%d_padded.webp", ld, i);
 		
 		cv::Mat test=pieces[i].clone(), testout = cv::Mat(pieces[i].size(), CV_MAKETYPE(src_depth,3));
@@ -1736,6 +1735,12 @@ void w2xconv_convert_mat
 	int src_cn = CV_MAT_CN(image_src->type());
 	cv::Mat image = cv::Mat(image_src->size(), CV_32FC3);
 	cv::Mat alpha;
+#if CROP_ALPHA
+	//cv::Mat crop_alpha;
+	cv::Size orig_size;
+	cv::Size crop_size;
+	cv::Rect crop_pos;
+#endif 
 
 	if (is_rgb)
 	{
@@ -1753,6 +1758,20 @@ void w2xconv_convert_mat
 				{
 					preproc_rgba2rgb<unsigned char, 255, 2, 0>(&image, &alpha, image_src, background.r, background.g, background.b);
 				}
+#if CROP_ALPHA
+				std::vector<cv::Mat> channels;
+
+				cv::split(*image_src, channels);               // seperate channels
+				crop_pos = boundingRect(channels[3]); // find boundingRect of alpha channel
+				printf("subImageRect: x-%d, y-%d, w-%d, h-%d", crop_pos.x, crop_pos.y, crop_pos.width, crop_pos.height);
+
+				orig_size = image.size();
+				image = (image)(crop_pos);
+				crop_size = image.size();
+				//cv::imwrite("before_scale.png", image);
+
+				//crop_alpha = (alpha)(crop_pos);
+#endif
 			}
 			else
 			{
@@ -2023,12 +2042,36 @@ void w2xconv_convert_mat
 	}
 	else
 	{
+#if CROP_ALPHA
+		cv::Size dst_size = cv::Size(orig_size.width*image.size().width/crop_size.width,
+			orig_size.height*image.size().height/crop_size.height);
+		*image_dst = cv::Mat(dst_size, CV_MAKETYPE(src_depth, 4));
+
+		if (dst_size != alpha.size())
+		{
+			cv::resize(alpha, alpha, dst_size, 0, 0, cv::INTER_LINEAR);
+
+			//refill zero padding round the border
+			cv::copyMakeBorder(image, image,
+				crop_pos.y*image.size().height / crop_size.height,
+				dst_size.height - (crop_pos.y + crop_pos.height) * image.size().height / crop_size.height,
+				crop_pos.x*image.size().width / crop_size.width,
+				dst_size.width - (crop_pos.x + crop_pos.width) * image.size().width / crop_size.width,
+				cv::BORDER_CONSTANT);
+
+			//cv::Mat tmp_image2 = cv::Mat(image.size(), CV_MAKETYPE(src_depth, 4));
+			//cv::resize(crop_alpha, crop_alpha, image.size(), 0, 0, cv::INTER_LINEAR);
+			//postproc_rgb2rgba<unsigned char, 255, 2, 0>(&tmp_image2, &image, &crop_alpha, background.r, background.g, background.b);
+			//cv::imwrite("test.png", tmp_image2);
+		}
+#else
 		*image_dst = cv::Mat(image.size(), CV_MAKETYPE(src_depth,4));
 
 		if (image.size() != alpha.size())
 		{
 			cv::resize(alpha, alpha, image.size(), 0, 0, cv::INTER_LINEAR);
 		}
+#endif
 
 		if (is_rgb)
 		{
@@ -2247,11 +2290,19 @@ int w2xconv_convert_file
 		printf("Scaling image from %dx%d to %dx%d\n", image_src.cols, image_src.rows, (int) (image_src.cols * scale), (int) (image_src.rows * scale));
 	}
 	
+	double time_convert = getsec();
 	w2xconv_convert_mat(conv, &image_dst, &image_src, denoise_level, scale, blockSize, background, has_alpha, dst_alpha);
 	
+	//not count IO time
+	double time_end = getsec();
+
+	conv->flops.process_sec += time_end - time_start;
+
 	if (conv->log_level >= 2)
 	{
-		printf("Writing image to file...\n\n");
+		printf("w2xconv_convert_mat took %.3fs...\n", time_end - time_convert);
+		printf("w2xconv_convert_file took %.3fs...\n", conv->flops.process_sec);
+		printf("Writing image to file...\n");
 	}
 	
 	std::vector<int> vec_imwrite_params;
@@ -2259,16 +2310,34 @@ int w2xconv_convert_file
 	{
 		vec_imwrite_params.push_back(imwrite_params[i]);
 	}
-	
+
+#if 0
+	//resize 2x by opencv , performance compare
+	// test result is < 0.01s
+	if (has_alpha)
+	{
+		image_src = read_image(src_path, cv::IMREAD_UNCHANGED);
+	}
+	else
+	{
+		image_src = read_image(src_path, cv::IMREAD_COLOR);
+	}
+
+	cv::Mat image_test;
+	cv::resize(image_src, image_test, cv::Size(), 2, 2, cv::INTER_CUBIC);
+	printf("cubic scale took %.3fs...\n", getsec() - time_end);
+
+	TCHAR dst_path2[100];
+	wsprintf(dst_path2, L"cubic_%s", dst_path);
+
+	write_image(dst_path2, image_test, vec_imwrite_params);
+#endif
+
 	if (!write_image(dst_path, image_dst, vec_imwrite_params))
 	{
 		setPathError(conv, W2XCONV_ERROR_IMWRITE_FAILED, dst_path);
 		return -1;
 	}
-
-	double time_end = getsec();
-
-	conv->flops.process_sec += time_end - time_start;
 
 	//printf("== %f == \n", conv->impl->env.transfer_wait);
 
